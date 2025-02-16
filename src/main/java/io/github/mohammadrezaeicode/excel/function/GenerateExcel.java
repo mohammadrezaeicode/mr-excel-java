@@ -26,7 +26,7 @@ import java.util.function.Function;
 import static io.github.mohammadrezaeicode.excel.util.CommentUtil.commentConvertor;
 
 public class GenerateExcel {
-    public static <T> Result generateHeaderAndGenerateExcel(List<SheetGenerator<T>> sheetData, ExcelTableOption options) throws InvocationTargetException, IllegalAccessException, IOException {
+    public static <T> Result generateHeaderAndGenerateExcel(List<SheetGenerator<T>> sheetData, ExcelTableOption options) throws InvocationTargetException, IllegalAccessException, IOException, NoSuchMethodException {
         List<Sheet1> sheetList = new ArrayList<>();
         for (SheetGenerator<T> sheet : sheetData) {
             sheetList.add(SheetGeneratorUtils.generateSheet(sheet.getData(), sheet.getHeaderClass(), sheet.getApplyHeaderOptionFunction()));
@@ -42,7 +42,7 @@ public class GenerateExcel {
         return generateExcel(exOb, "");
     }
 
-    public static <T> Result generateHeaderAndGenerateExcel(List<T> data, ExcelTableOption options, Class headerClass, Function<List<Header>, List<Header>> applyHeaderOptionFunction) throws InvocationTargetException, IllegalAccessException, IOException {
+    public static <T> Result generateHeaderAndGenerateExcel(List<T> data, ExcelTableOption options, Class headerClass, Function<List<Header>, List<Header>> applyHeaderOptionFunction) throws InvocationTargetException, IllegalAccessException, IOException, NoSuchMethodException {
         var exOb = ExcelTable1.builder()
                 .sheet(
                         Collections.singletonList(SheetGeneratorUtils.<T>generateSheet(data, headerClass, applyHeaderOptionFunction))

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.function.Function;
 
 public class SheetGeneratorUtils {
-    public static  <T> Sheet1 generateSheet(List<T> data, Class headerClass, Function<List<Header>,List<Header>> applyHeaderOptionFunction){
+    public static  <T> Sheet1 generateSheet(List<T> data, Class headerClass, Function<List<Header>,List<Header>> applyHeaderOptionFunction) throws NoSuchMethodException {
         List<Header> headers=new ArrayList<>();
         if(data.size()>0){
             var firstRecord=data.get(0);

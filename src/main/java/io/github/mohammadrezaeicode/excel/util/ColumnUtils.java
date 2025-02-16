@@ -13,12 +13,8 @@ public class ColumnUtils {
            List<String> cols
     ){
         String column = refString.replaceAll("[0-9]", "");
-        int row = 0;
-                try {
-                    row=  Integer.parseInt(refString.substring(column.length()));
-                }catch (NumberFormatException exception){
-                    System.out.println("");
-                }
+        int row = Integer.parseInt(refString.substring(column.length()));
+
         row = Math.max(0, row - 1);
         int colIndex = cols.indexOf(column);
         if (colIndex < 0) {

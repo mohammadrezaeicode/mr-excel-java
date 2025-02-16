@@ -1,0 +1,97 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+
+}
+compileJava {
+    options.encoding = "UTF-8"
+}
+compileTestJava {options.encoding = "UTF-8"}
+
+
+group = 'io.github.mohammadrezaeicode'
+version = '0.1-SNAPSHOT'
+
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.9.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.8.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.8.1'
+    compileOnly 'org.projectlombok:lombok:1.18.36'
+    annotationProcessor 'org.projectlombok:lombok:1.18.36'
+}
+
+publishing {
+    publications {
+        gpr(MavenPublication) {
+            artifactId = "excel"
+            from components.java
+            versionMapping {
+                usage('java-api') {
+                    fromResolutionOf('runtimeClasspath')
+                }
+                usage('java-runtime') {
+                    fromResolutionResult()
+                }
+            }
+            pom {
+                name = 'MR Excel'
+                description = 'A versatile Java library for effortlessly generating .xlsx files from input objects. Seamlessly create Excel spreadsheets with data, formatting, formulas, and more.'
+                url = 'https://github.com/mohammadrezaeicode/mr-excel-java'
+//                properties = [
+//                        myProp: "value",
+//                        "prop.with.dots": "anotherValue"
+//                ]
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'MohammadR'
+                        name = 'Mohammad Rezaei'
+                        email = 'mohammadrezaeicode@gmail.com'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:https://github.com/mohammadrezaeicode/mr-excel-java.git'
+                    developerConnection = 'scm:git:git@github.com:mohammadrezaeicode/mr-excel-java.git'
+                    url = 'https://github.com/mohammadrezaeicode/mr-excel-java'
+                }
+                repositories {
+                    maven {
+                        name = "GitHubPackages"
+                        url = uri("https://maven.pkg.github.com/mohammadrezaeicode/mr-excel-java") // replace OWNER and REPOSITORY with your GitHub username and your repository name
+                        credentials {
+                            username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
+                            password = project.findProperty("gpr.key") ?: System.getenv("TOKEN")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+javadoc {
+    if(JavaVersion.current().isJava9Compatible()) {
+        options.addBooleanOption('html5', true)
+    }
+}

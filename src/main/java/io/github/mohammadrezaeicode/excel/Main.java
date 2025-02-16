@@ -13,7 +13,6 @@ import java.util.Optional;
 
 public class  Main {
     public static void main(String[] args) throws IOException, InvocationTargetException, IllegalAccessException {
-        System.out.println(Optional.ofNullable(null).isPresent());
 
 //        ExcelTable1 excelTable1= ExcelTable1.builder()
 //                .sheet(Arrays.asList(
