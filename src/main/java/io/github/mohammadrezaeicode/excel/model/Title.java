@@ -23,7 +23,7 @@ public class Title {
     private Comment comment;
 
     public String getStyleId() {
-        if(styleId==null){
+        if (styleId == null) {
             return "titleStyle";
         }
         return styleId;

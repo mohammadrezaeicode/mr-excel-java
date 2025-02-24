@@ -19,10 +19,10 @@ public class SheetRelFlag {
 
     public SheetRelFlag(Boolean same) {
         this.form = same;
-                this.drawing=same;
-        this.vmlDrwing=same;
-                this.comment=same;
-        this.table=same;
-                this.sheetDrawingsPushed=same;
+        this.drawing = same;
+        this.vmlDrwing = same;
+        this.comment = same;
+        this.table = same;
+        this.sheetDrawingsPushed = same;
     }
 }

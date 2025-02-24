@@ -5,6 +5,10 @@ public class Comment {
     private String styleId;
     private String author;
 
+    public Comment(String comment) {
+        this.comment = comment;
+    }
+
     public Comment(String comment, String styleId, String author) {
         this.comment = comment;
         this.styleId = styleId;
@@ -20,7 +24,7 @@ public class Comment {
     }
 
     public String getStyleId() {
-        if(styleId==null){
+        if (styleId == null) {
             return "";
         }
         return styleId;
@@ -31,7 +35,7 @@ public class Comment {
     }
 
     public String getAuthor() {
-        if(author==null){
+        if (author == null) {
             return "";
         }
         return author;

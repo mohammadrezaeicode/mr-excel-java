@@ -9,17 +9,9 @@ public class Position {
     private ShapeRC start;
     private ShapeRC end;
 
-    public ShapeRC getStart() {
-        return start;
-    }
-
-    public ShapeRC getEnd() {
-        return end;
-    }
-
     public Position() {
-        start=new ShapeRC("0","0");
-        end=new ShapeRC("1","1");
+        start = new ShapeRC("0", "0");
+        end = new ShapeRC("1", "1");
     }
 
     public Position(ShapeRC start, ShapeRC end) {
@@ -27,8 +19,16 @@ public class Position {
         this.end = end;
     }
 
+    public ShapeRC getStart() {
+        return start;
+    }
+
     public void setStart(ShapeRC start) {
         this.start = start;
+    }
+
+    public ShapeRC getEnd() {
+        return end;
     }
 
     public void setEnd(ShapeRC end) {

@@ -7,13 +7,33 @@ import lombok.NoArgsConstructor;
 
 import java.util.HashMap;
 import java.util.Map;
+
 @Data
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
 public class MergeRowConditionMap {
+    private Map<String, Condition> mergeConditionMap;
+
     public Condition get(String columnKey) {
+        if (mergeConditionMap == null) {
+            mergeConditionMap = new HashMap<>();
+        }
         return mergeConditionMap.get(columnKey);
+    }
+
+    public Map<String, Condition> getMergeConditionMap() {
+        if (mergeConditionMap == null) {
+            mergeConditionMap = new HashMap<>();
+        }
+        return mergeConditionMap;
+    }
+
+    public void put(String s, Condition condition) {
+        if (mergeConditionMap == null) {
+            mergeConditionMap = new HashMap<>();
+        }
+        mergeConditionMap.put(s, condition);
     }
 
     @Data
@@ -28,36 +48,20 @@ public class MergeRowConditionMap {
             this.start = start;
         }
 
-        public void setInProgress(Boolean inProgress) {
-            this.inProgress = inProgress;
-        }
-
-        public void setStart(Integer start) {
-            this.start = start;
-        }
-
         public Boolean getInProgress() {
             return inProgress;
+        }
+
+        public void setInProgress(Boolean inProgress) {
+            this.inProgress = inProgress;
         }
 
         public Integer getStart() {
             return start;
         }
-    }
 
-    private Map<String, Condition> mergeConditionMap;
-
-    public Map<String, Condition> getMergeConditionMap() {
-        if (mergeConditionMap == null) {
-            mergeConditionMap = new HashMap<>();
+        public void setStart(Integer start) {
+            this.start = start;
         }
-        return mergeConditionMap;
-    }
-
-    public void put(String s, Condition condition) {
-        if (mergeConditionMap == null) {
-            mergeConditionMap = new HashMap<>();
-        }
-        mergeConditionMap.put(s, condition);
     }
 }

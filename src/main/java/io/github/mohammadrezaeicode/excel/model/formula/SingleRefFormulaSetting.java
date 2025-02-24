@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 public class SingleRefFormulaSetting implements FormulaMapBody {
     private SingleRefFormulaType type;
     private String referenceCell;
-    private String value;
+    private Object value;
     private String styleId;
     public enum SingleRefFormulaType {
         LEN("LEN"),

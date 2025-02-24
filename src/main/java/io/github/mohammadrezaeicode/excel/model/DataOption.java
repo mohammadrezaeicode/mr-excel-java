@@ -12,32 +12,32 @@ import java.util.Map;
 @AllArgsConstructor
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class DataOption  extends MergeConfig{
-   private Number outlineLevel;
-    private Number hidden;
+public class DataOption extends MergeConfig {
+    private Number outlineLevel;
+    private Boolean hidden;
     private String rowStyle;
     private Number height;
     private Map<Method, List<MultiStyleValue>> multiStyleValue;
-    private Map<Method,Comment> comment;
+    private Map<Method, Comment> comment;
 
- public void addComment(Method key, Comment checkCommentCondition) {
-  if(comment==null){
-   comment=new HashMap<>();
-  }
-  comment.put(key,checkCommentCondition);
- }
+    public void addComment(Method key, Comment checkCommentCondition) {
+        if (comment == null) {
+            comment = new HashMap<>();
+        }
+        comment.put(key, checkCommentCondition);
+    }
 
- public void addMultiStyle(Method key, List<MultiStyleValue> multi) {
-  if(multiStyleValue==null){
-   multiStyleValue=new HashMap<>();
-  }
-  multiStyleValue.put(key,multi);
- }
+    public void addMultiStyle(Method key, List<MultiStyleValue> multi) {
+        if (multiStyleValue == null) {
+            multiStyleValue = new HashMap<>();
+        }
+        multiStyleValue.put(key, multi);
+    }
 
- public boolean getMultiStyleValueKeyExist(Method key) {
-  if(multiStyleValue!=null){
-   return multiStyleValue.containsKey(key);
-  }
-  return false;
- }
+    public boolean getMultiStyleValueKeyExist(Method key) {
+        if (multiStyleValue != null) {
+            return multiStyleValue.containsKey(key);
+        }
+        return false;
+    }
 }

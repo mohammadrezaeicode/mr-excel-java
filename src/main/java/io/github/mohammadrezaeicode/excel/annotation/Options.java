@@ -7,4 +7,5 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Options {
     String title() default "";
+    int order() default -1;
 }

@@ -22,14 +22,17 @@ public class ConverterUtil {
     public static byte[] byteBufferToByteArray(ByteBuffer buffer) {
         return buffer.array();
     }
+
     public static byte[] byteBufferToByteArrayV2(ByteBuffer buffer) {
         byte[] byteArray = new byte[buffer.remaining()];
         buffer.get(byteArray);
         return byteArray;
     }
+
     public static byte[] base64ToByteArray(String base64String) {
         return Base64.getDecoder().decode(base64String);
     }
+
     public static byte[] binaryStringToByteArray(String binaryString) {
         String[] binaryValues = binaryString.trim().split(" ");
         byte[] byteArray = new byte[binaryValues.length];
@@ -38,16 +41,17 @@ public class ConverterUtil {
         }
         return byteArray;
     }
+
     public static byte[] binaryStringToByteArrayV1(String binaryString) {
         String[] binaryValues = binaryString.trim().split(" ");
         byte[] byteArray = new byte[binaryValues.length];
 
         for (int i = 0; i < binaryValues.length; i++) {
-            // Parse each binary string and convert to a byte
             byteArray[i] = (byte) Integer.parseInt(binaryValues[i], 2);
         }
         return byteArray;
     }
+
     public static byte[] binaryStringToByteArray2(String binaryString) {
         String cleanedBinaryString = binaryString.replaceAll("\\s+", "");
         int length = cleanedBinaryString.length();

@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Builder
 @Data
-public class CustomFormulaSetting implements FormulaMapBody{
+public class CustomFormulaSetting implements FormulaMapBody {
     private Boolean isArray;
     private String referenceCells;
     private String formula;

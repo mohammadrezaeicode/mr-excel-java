@@ -1,8 +1,8 @@
-package io.github.mohammadrezaeicode.excel.model.style1;
+package io.github.mohammadrezaeicode.excel.model.style;
 
 public class Format {
-    private int key;
-    private String value;
+    private final int key;
+    private final String value;
 
     public Format(int key, String value) {
         this.key = key;

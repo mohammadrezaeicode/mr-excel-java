@@ -16,29 +16,32 @@ public class ShapeRC {
         return row;
     }
 
+    public void setRow(String row) {
+        this.row = row;
+    }
+
     public String getCol() {
         return col;
     }
+
+    public void setCol(String col) {
+        this.col = col;
+    }
+
     public Integer getRowNum() {
-        try{ return Integer.parseInt(row);}catch ( NumberFormatException exception){
+        try {
+            return Integer.parseInt(row);
+        } catch (NumberFormatException exception) {
             return -1;
         }
     }
 
     public Integer getColNum() {
-        try{
+        try {
             return Integer.parseInt(col);
-        }catch (
-                NumberFormatException exception){
+        } catch (
+                NumberFormatException exception) {
             return -1;
         }
-    }
-
-    public void setRow(String row) {
-        this.row = row;
-    }
-
-    public void setCol(String col) {
-        this.col = col;
     }
 }

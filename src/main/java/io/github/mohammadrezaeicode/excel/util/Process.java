@@ -9,7 +9,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class Process {
     public static List<Header> findAnnotation(Class headerClass) throws NoSuchMethodException, SecurityException {
@@ -18,7 +20,7 @@ public class Process {
         List<String> textName = new ArrayList<>();
         List<String> methodName = new ArrayList<>();
         Field[] fields = cls.getDeclaredFields();
-//        Map<String,String> fieldVsMethod=new HashMap<>();
+        Map<Integer, List<Header>> orderMap = new HashMap<>();
         for (Field field : fields) {
             if (!field.isAnnotationPresent(ExcludeProperty.class)) {
 
@@ -27,8 +29,6 @@ public class Process {
                 if (field.isAnnotationPresent(GetterMethod.class)) {
                     GetterMethod getterMethod = field.getAnnotation(GetterMethod.class);
                     getterMethodName = getterMethod.method();
-//                    methodName.add(getterMethodName);
-//                    fieldVsMethod.put(field.getName(),getterMethodName);
                 } else {
                     if (fieldName.length() > 1) {
                         getterMethodName = "get" + (String.valueOf(fieldName.charAt(0))).toUpperCase() + fieldName.substring(1);
@@ -37,31 +37,36 @@ public class Process {
                     }
                 }
                 String title = field.getName();
+                Integer methodOrder = -1;
                 if (field.isAnnotationPresent(Options.class)) {
                     Options options = field.getAnnotation(Options.class);
                     String anTitle = new String(options.title().getBytes(), StandardCharsets.UTF_8);
                     if (anTitle.length() > 0) {
                         title = anTitle;
                     }
+                    methodOrder = options.order();
                 }
                 textName.add(title);
                 methodName.add(getterMethodName);
                 presentField.add(field);
-//                fieldVsMethod.put(getterMethodName,fieldName);
-            } 
+                Method m = cls.getMethod(getterMethodName);
+                Header headerObj = new Header(field.getName(), title, m);
+                if (!orderMap.containsKey(methodOrder)) {
+                    orderMap.put(methodOrder, new ArrayList<>());
+                }
+                var ordersArray = orderMap.get(methodOrder);
+                ordersArray.add(headerObj);
+                orderMap.put(methodOrder, ordersArray);
+            }
         }
-        List<Header> header = new ArrayList<>();
-        int index = 0;
-        for (String name : methodName) {
-
-        Method m = cls.getMethod(name);
-        header.add(new Header(presentField.get(index).getName(), textName.get(index), m));
-//                String result= (String) m.invoke(obj);
-//                System.out.println(result);
-
-            index++;
+        var orderKeys = new ArrayList<>(orderMap.keySet());
+        orderKeys.sort((a, b) -> a > b ? 1 : -1);
+        List<Header> sortHeader = new ArrayList<>();
+        for (Integer order : orderKeys) {
+            var list = orderMap.get(order);
+            sortHeader.addAll(list);
         }
-        return header;
+        return sortHeader;
     }
 
 }

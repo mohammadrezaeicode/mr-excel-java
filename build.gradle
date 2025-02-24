@@ -11,7 +11,7 @@ compileTestJava {options.encoding = "UTF-8"}
 
 
 group = 'io.github.mohammadrezaeicode'
-version = '0.1-SNAPSHOT'
+version = '1.0.1'
 
 java {
     withJavadocJar()
@@ -35,6 +35,8 @@ publishing {
     publications {
         mavenJava(MavenPublication) {
             artifactId = "excel"
+            group = 'io.github.mohammadrezaeicode'
+            version = '1.0.1'
             from components.java
             versionMapping {
                 usage('java-api') {
@@ -54,8 +56,8 @@ publishing {
 //                ]
                 licenses {
                     license {
-                        name = 'The Apache License, Version 2.0'
-                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        name = 'The MIT License'
+                        url = 'https://github.com/mohammadrezaeicode/mr-excel-repo/blob/main/LICENSE'
                     }
                 }
                 developers {
@@ -72,17 +74,17 @@ publishing {
                 }
                 repositories {
                     maven {
-                        url = version.endsWith('SNAPSHOT') ?
-                                "https://s01.oss.sonatype.org/content/repositories/snapshots/" :
-                                "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
-
-                        credentials {
-                            username = project.findProperty("ossrhUsername") // Load from gradle.properties
-                            password = project.findProperty("ossrhPassword") // Load from gradle.properties
-                        }
-//                        def releasesRepoUrl = layout.buildDirectory.dir('repos/releases')
-//                        def snapshotsRepoUrl = layout.buildDirectory.dir('repos/snapshots')
-//                        url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+//                        url = version.endsWith('SNAPSHOT') ?
+//                                "https://central.sonatype/content/repositories/snapshots/" :
+//                                "https://central.sonatype/service/local/staging/deploy/maven2/"
+//
+//                        credentials {
+//                            username = project.findProperty("ossrhUsername") // Load from gradle.properties
+//                            password = project.findProperty("ossrhPassword") // Load from gradle.properties
+//                        }
+                        def releasesRepoUrl = layout.buildDirectory.dir('repos/releases')
+                        def snapshotsRepoUrl = layout.buildDirectory.dir('repos/snapshots')
+                        url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
                     }
                 }
             }
@@ -105,23 +107,46 @@ tasks.withType(JavaCompile) {
 //    classifier = 'sources'
 //    from sourceSets.main.allSource
 //}
-//java {
-//    toolchain {
-//        languageVersion = JavaLanguageVersion.of(11)
-//    }
-//    withJavadocJar()
-//    withSourcesJar()
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(11)
+    }
+    withJavadocJar()
+    withSourcesJar()
+
+}
+
+//javadoc {
 //
 //}
-
 
 signing {
     sign publishing.publications.mavenJava
 }
 //
 //
+//javadoc {
+//    if(JavaVersion.current().isJava9Compatible()) {
+//        options.addBooleanOption('html5', true)
+//        exclude()
+//    }
+//    options {
+//        addStringOption('Xdoclint:none', '') // Disable doclint warnings
+//
+//    }
+//    exclude('**/lombok/**')
+//}
+
 javadoc {
-    if(JavaVersion.current().isJava9Compatible()) {
+//    options.addFileOption './src'
+    options.encoding = 'UTF-8'
+        if(JavaVersion.current().isJava9Compatible()) {
         options.addBooleanOption('html5', true)
+        exclude()
     }
+//    source = sourceSets.main.allJava
+//    options {
+//        addStringOption('Xdoclint', 'none') // Disable doclint warnings
+//        excludes = ['**/lombok/**'] // Exclude Lombok classes
+//    }
 }

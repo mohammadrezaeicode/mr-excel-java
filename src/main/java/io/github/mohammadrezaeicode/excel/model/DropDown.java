@@ -13,5 +13,5 @@ import java.util.List;
 @NoArgsConstructor
 public class DropDown {
     private List<String> option;
-   private List<String> forCell;
+    private List<String> forCell;
 }

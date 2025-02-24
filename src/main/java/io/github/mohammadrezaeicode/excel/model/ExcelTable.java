@@ -1,7 +1,7 @@
 package io.github.mohammadrezaeicode.excel.model;
 
+import io.github.mohammadrezaeicode.excel.model.style.StyleBody;
 import lombok.*;
-import io.github.mohammadrezaeicode.excel.model.style1.StyleBody;
 
 import java.util.List;
 
@@ -10,9 +10,9 @@ import java.util.List;
 @NoArgsConstructor
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class ExcelTable1 extends ExcelTableOption {
+public class ExcelTable extends ExcelTableOption {
 
-    private List<Sheet1> sheet;
+    private List<Sheet> sheet;
 
     public void addStyle(String key, StyleBody styleBody) {
         var style = getStyles();

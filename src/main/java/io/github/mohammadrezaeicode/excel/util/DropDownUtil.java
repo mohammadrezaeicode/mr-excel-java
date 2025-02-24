@@ -15,13 +15,7 @@ public class DropDownUtil {
             var dropDown = dropDowns.get(index);
             var sqref = dropDown.getForCell().stream().reduce("", (resultValue, current) -> resultValue + " " + current);
             var options = String.join(",", dropDown.getOption());
-            result +=
-                    "<dataValidation type=\"list\" allowBlank=\"1\" showErrorMessage=\"1\" sqref=\"" +
-                            sqref.trim() +
-                            "\">" +
-                            "<formula1>&quot;" +
-                            options +
-                            "&quot;</formula1></dataValidation>";
+            result += "<dataValidation type=\"list\" allowBlank=\"1\" showErrorMessage=\"1\" sqref=\"" + sqref.trim() + "\">" + "<formula1>&quot;" + options + "&quot;</formula1></dataValidation>";
         }
         result += "</dataValidations>";
         return result;

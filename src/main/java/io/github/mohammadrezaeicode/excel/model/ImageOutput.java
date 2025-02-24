@@ -6,10 +6,15 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Result<T> {
-    private T fileData;
-    private String fileName;
+@Builder
+public class ImageOutput {
+    private String name;
+    private String type;
+    private ImageInput image;
+    private int ref;
+    private Integer index;
+    private Sheet.ImageTypes input;
+
 }

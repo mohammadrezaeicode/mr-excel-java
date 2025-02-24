@@ -1,4 +1,4 @@
-package io.github.mohammadrezaeicode.excel.model.style1;
+package io.github.mohammadrezaeicode.excel.model.style;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,9 +12,9 @@ import lombok.NoArgsConstructor;
 public class SortAndFilter {
     private String ref;
     private Mode mode;
+
     public enum Mode {
-        ALL("all"),
-        REF("ref");
+        ALL("all"), REF("ref");
         private final String label;
 
         Mode(String label) {

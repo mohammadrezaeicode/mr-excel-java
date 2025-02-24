@@ -9,16 +9,21 @@ import io.github.mohammadrezaeicode.excel.model.func.MergeRowDataConditionInputF
 import io.github.mohammadrezaeicode.excel.model.func.MultiStyleConditionInputFunction;
 import io.github.mohammadrezaeicode.excel.model.func.StyleCellConditionInputFunction;
 import io.github.mohammadrezaeicode.excel.model.row.SheetDimension;
-import io.github.mohammadrezaeicode.excel.model.style1.SortAndFilter;
-import io.github.mohammadrezaeicode.excel.model.style1.StyleBody;
-import io.github.mohammadrezaeicode.excel.model.style1.StyleMapper;
+import io.github.mohammadrezaeicode.excel.model.style.SortAndFilter;
+import io.github.mohammadrezaeicode.excel.model.style.StyleBody;
+import io.github.mohammadrezaeicode.excel.model.style.StyleMapper;
 import io.github.mohammadrezaeicode.excel.model.types.GenerateType;
+import io.github.mohammadrezaeicode.excel.service.GeneralConfig;
 import io.github.mohammadrezaeicode.excel.util.*;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -26,12 +31,12 @@ import java.util.function.Function;
 import static io.github.mohammadrezaeicode.excel.util.CommentUtil.commentConvertor;
 
 public class GenerateExcel {
-    public static <T> Result generateHeaderAndGenerateExcel(List<SheetGenerator<T>> sheetData, ExcelTableOption options) throws InvocationTargetException, IllegalAccessException, IOException, NoSuchMethodException {
-        List<Sheet1> sheetList = new ArrayList<>();
+    public static <T> Result generateHeaderAndGenerateExcelWithMultiSheet(List<SheetGenerator<T>> sheetData, ExcelTableOption options) throws InvocationTargetException, IllegalAccessException, IOException, NoSuchMethodException {
+        List<Sheet> sheetList = new ArrayList<>();
         for (SheetGenerator<T> sheet : sheetData) {
-            sheetList.add(SheetGeneratorUtils.generateSheet(sheet.getData(), sheet.getHeaderClass(), sheet.getApplyHeaderOptionFunction()));
+            sheetList.add(SheetGeneratorUtils.generateSheet(sheet.getData(), sheet.getHeaderClass(), sheet.getApplyHeaderOptionFunction(), sheet.getApplySheetOptionFunction()));
         }
-        var exOb = ExcelTable1.builder()
+        var exOb = ExcelTable.builder()
                 .sheet(
                         sheetList
                 )
@@ -42,10 +47,10 @@ public class GenerateExcel {
         return generateExcel(exOb, "");
     }
 
-    public static <T> Result generateHeaderAndGenerateExcel(List<T> data, ExcelTableOption options, Class headerClass, Function<List<Header>, List<Header>> applyHeaderOptionFunction) throws InvocationTargetException, IllegalAccessException, IOException, NoSuchMethodException {
-        var exOb = ExcelTable1.builder()
+    public static <T> Result generateHeaderAndGenerateExcel(List<T> data, ExcelTableOption options, Class headerClass, Function<List<Header>, List<Header>> applyHeaderOptionFunction, Function<Sheet.SheetBuilder, Sheet> applySheetOptionFunction) throws InvocationTargetException, IllegalAccessException, IOException, NoSuchMethodException {
+        var exOb = ExcelTable.builder()
                 .sheet(
-                        Collections.singletonList(SheetGeneratorUtils.<T>generateSheet(data, headerClass, applyHeaderOptionFunction))
+                        Collections.singletonList(SheetGeneratorUtils.generateSheet(data, headerClass, applyHeaderOptionFunction, applySheetOptionFunction))
                 )
                 .build();
         if (options != null) {
@@ -54,13 +59,16 @@ public class GenerateExcel {
         return generateExcel(exOb, "");
     }
 
-    public static Result generateExcel(ExcelTable1 data, String styleKey) throws InvocationTargetException, IllegalAccessException, IOException {
+    public static Result generateExcel(ExcelTable data, String styleKey) throws InvocationTargetException, IllegalAccessException, IOException {
+        if (data == null) {
+            data = new ExcelTable();
+        }
         Map<String, String> resultStringMap = new HashMap<>();
+        Map<String, ImageOutput> resultAssetsMap = new HashMap<>();
 
-//        TODO: for next release
-//        if (typeof styleKey == "string" && styleKey.length > 0) {
-//            data = applyConfig(styleKey, data);
-//        }
+        if (styleKey != null && styleKey.length() > 0) {
+            data = GeneralConfig.applyConfig(styleKey, data);
+        }
         if (data.getCreator() != null && data.getCreator().trim().length() == 0) {
             throw new Error("length of \"creator\" most be bigger then 0");
         }
@@ -82,7 +90,7 @@ public class GenerateExcel {
         if (data.getFormatMap() != null && !data.getFormatMap().isEmpty()) {
             formatMap.putAll(data.getFormatMap());
         }
-//        boolean isBackend = Utils.booleanCheck(data.getBackend());
+        var fetchFunc = data.getFetch();
         Map<String, String> operatorMap = new HashMap<>();
         operatorMap.put("lt", "lessThan");
         operatorMap.put("gt", "greaterThan");
@@ -96,14 +104,10 @@ public class GenerateExcel {
             cols.clear();
             cols.addAll(result);
         }
-//  const module = await import("jszip");
-//  const JSZip1 = module.default;
-//        let zip = new JSZip1();
         if (data.getSheet() == null) {
-            data.setSheet(new ArrayList<>(Collections.singletonList(Sheet1.builder().headers(new ArrayList<>()).data(new ArrayList<>()).build())));
+            data.setSheet(new ArrayList<>(Collections.singletonList(Sheet.builder().headers(new ArrayList<>()).data(new ArrayList<>()).build())));
         }
         int sheetLength = data.getSheet().size();
-//        // xl
         String xlFolder = "xl";
         String xl_media_Folder = xlFolder + "/media";
         String xl_drawingsFolder = xlFolder + "/drawings";
@@ -127,14 +131,14 @@ public class GenerateExcel {
         Map<String, String> headerFooterStyle = new HashMap<>();
         Map<String, Number> cFMapIndex = new HashMap<>();
         var styleMapper = new StyleMapper(styles, addCF);
-        if (styleMapper.getConditionalFormattingStyle() != null) {
+        if (styleMapper.getConditionalFormattingStyle() != null && addCF) {
             cFMapIndex.putAll(styleMapper.getConditionalFormattingStyle());
         }
         if (styleMapper.getHeaderFooterStyle() != null) {
             headerFooterStyle.putAll(styleMapper.getHeaderFooterStyle());
         }
 //
-        resultStringMap.put(xlFolder + "/styles.xml", Utils1.styleGenerator(styleMapper, addCF));
+        resultStringMap.put(xlFolder + "/styles.xml", XmlUtils.styleGenerator(styleMapper, addCF));
 //
         var sheetContentType =
                 "<Override ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\" PartName=\"/xl/worksheets/sheet1.xml\" />";
@@ -150,7 +154,7 @@ public class GenerateExcel {
         boolean selectedAdded = false;
         int activeTabIndex = -1;
         List<String> arrTypes = new ArrayList<>();
-        int imageCounter = 1;
+        AtomicInteger imageCounter = new AtomicInteger(1);
 
         var formCtrlMap = new HashMap<String, String>();
         formCtrlMap.put("checkbox",
@@ -166,7 +170,7 @@ public class GenerateExcel {
         List<String> checkboxForm = new ArrayList<>();
         String calcChainValue = "";
         boolean needCalcChain = false;
-        String xl_tableFolder = xlFolder + "/table";
+        String xl_tableFolder = xlFolder + "/tables";
         for (int index = 0; index < sheetLength; index++) {
             var sheetData = data.getSheet().get(index);
             int sheetDataId = index + 1;
@@ -201,7 +205,7 @@ public class GenerateExcel {
                 formulaSheetObj = new HashMap<>();
             }
             List<ConditionalFormatting> conditionalFormatting = new ArrayList<>();
-            if (sheetData.getConditionalFormatting() != null) {
+            if (sheetData.getConditionalFormatting() != null && addCF) {
                 conditionalFormatting.addAll(sheetData.getConditionalFormatting());//TODO should colne
             }
             boolean hasComment = false;
@@ -279,10 +283,10 @@ public class GenerateExcel {
                                     result.getFooter() +
                                     "\"/>";
                 }
-                final AtomicReference<String> typeKeeper = new AtomicReference<>();
-                final AtomicReference<String> odd = new AtomicReference<>();
-                final AtomicReference<String> even = new AtomicReference<>();
-                final AtomicReference<String> first = new AtomicReference<>();
+                final AtomicReference<String> typeKeeper = new AtomicReference<>("");
+                final AtomicReference<String> odd = new AtomicReference<>("");
+                final AtomicReference<String> even = new AtomicReference<>("");
+                final AtomicReference<String> first = new AtomicReference<>("");
                 var keyKey = Arrays.asList("header", "footer");
                 keyKey.forEach((keyObj) -> {
                     String endTag = String.valueOf(keyObj.charAt(0)).toUpperCase() + keyObj.substring(1);
@@ -295,20 +299,22 @@ public class GenerateExcel {
                                     typeKeeper.getAndUpdate(curr -> curr + typeHF);
                                 }
                                 var typeObj = element.getByKey(typeHF);
-                                final AtomicReference<String> node = new AtomicReference<>();
-                                typeObj.getSortItemKey()
-                                        .forEach((direction) -> {
-                                            String currentNodeValue = node.get();
-                                            var dirObj = typeObj.getByKey(direction);
-                                            currentNodeValue += "&amp;" + direction.toUpperCase();
-                                            if (dirObj.getStyleId() != null && headerFooterStyle.get(dirObj.getStyleId()) != null) {
-                                                currentNodeValue += headerFooterStyle.get(dirObj.getStyleId());
-                                            }
-                                            if (dirObj.getText() != null) {
-                                                currentNodeValue += dirObj.getText();
-                                            }
-                                            node.set(currentNodeValue);
-                                        });
+                                final AtomicReference<String> node = new AtomicReference<>("");
+                                if (typeObj != null) {
+                                    typeObj.getSortItemKey()
+                                            .forEach((direction) -> {
+                                                String currentNodeValue = node.get();
+                                                var dirObj = typeObj.getByKey(direction);
+                                                currentNodeValue += "&amp;" + direction.toUpperCase();
+                                                if (dirObj.getStyleId() != null && headerFooterStyle.get(dirObj.getStyleId()) != null) {
+                                                    currentNodeValue += headerFooterStyle.get(dirObj.getStyleId());
+                                                }
+                                                if (dirObj.getText() != null) {
+                                                    currentNodeValue += dirObj.getText();
+                                                }
+                                                node.set(currentNodeValue);
+                                            });
+                                }
                                 String currentNodeValue = node.get();
 
                                 currentNodeValue =
@@ -365,19 +371,19 @@ public class GenerateExcel {
                 String splitState = "";
                 var viewOption = sheetData.getViewOption();
                 if (viewOption.getType() != null) {
-                    viewType = viewOption.getType().toString();
+                    viewType = viewOption.getType().getType();
                 }
-                if (viewOption.getHideRuler()) {
+                if (Utils.booleanCheck(viewOption.getHideRuler())) {
                     sheetViewProperties += " showRuler=\"0\" ";
                 }
-                if (viewOption.getHideGrid()) {
+                if (Utils.booleanCheck(viewOption.getHideGrid())) {
                     sheetViewProperties += " showGridLines=\"0\" ";
                 }
-                if (viewOption.getHideHeadlines()) {
+                if (Utils.booleanCheck(viewOption.getHideHeadlines())) {
                     sheetViewProperties += " showRowColHeaders=\"0\" ";
                 }
                 var split = viewOption.getSplitOption();
-                if (split != null) {
+                if (split == null) {
                     isPortrait = false;
                     var frozen = viewOption.getFrozenOption();
                     if (frozen != null) {
@@ -421,7 +427,7 @@ public class GenerateExcel {
                                     .build();
 
                         } else if (frozen.getType() == ViewOption.FrozenOption.Type.BOTH) {
-                            String two ;
+                            String two;
                             Number splitO = null;
                             var startAtBuilder = ViewOption.SplitOption.builder();
                             if (frozen.getIndex() != null) {
@@ -515,7 +521,6 @@ public class GenerateExcel {
             if (sheetData.getCheckbox() != null) {
                 hasCheckbox = true;
                 var strFormDef = formCtrlMap.get("checkbox");
-//                sheetData.getCheckbox().forEach((v) ->);
                 var shCheckbox = sheetData.getCheckbox();
                 for (int i = 0; i < shCheckbox.size(); i++) {
                     var v = shCheckbox.get(i);
@@ -557,7 +562,8 @@ public class GenerateExcel {
                     String to = v.getEndStr();
                     var resultVal = new Position();
                     if (v.getCol() != null && v.getRow() != null) {
-                        resultVal = new Position(new ShapeRC(String.valueOf(v.getCol()), String.valueOf(v.getRow() - 1)), new ShapeRC(String.valueOf(v.getCol()), String.valueOf(v.getRow())));
+                        resultVal = new Position(new ShapeRC(String.valueOf(v.getRow() - 1), String.valueOf(v.getCol())),
+                                new ShapeRC(String.valueOf(v.getRow()), String.valueOf(v.getCol())));
                     }
                     if (from != null && from.length() >= 2) {
                         var p = ColumnUtils.getColRowBaseOnRefString(from, cols);
@@ -619,91 +625,90 @@ public class GenerateExcel {
                                     "</a:t></a:r></a:p></xdr:txBody></xdr:sp><xdr:clientData/></xdr:twoCellAnchor></mc:Choice><mc:Fallback/></mc:AlternateContent>";
                 }
             }
-            //TODO next
-//            let backgroundImagePromise;
-//            if (sheetData.backgroundImage) {
-//                if (xl_media_Folder == null) {
-//                    xl_media_Folder = xlFolder?.folder("media");
-//                }
-//      const urlImg = sheetData.backgroundImage;
-//                backgroundImagePromise = new Promise(async (resolve, reject) => {
-//                        let indexImageType = urlImg.lastIndexOf(".");
-//                let type;
-//                if (indexImageType > 0) {
-//                    type = urlImg.substring(indexImageType + 1).toLowerCase();
-//                    if (type.length > 4) {
-//                        if (type.indexOf("gif") >= 0) {
-//                            type = "gif";
-//                        } else if (type.indexOf("jpg") >= 0) {
-//                            type = "jpg";
-//                        } else if (type.indexOf("jpeg") >= 0) {
-//                            type = "jpeg";
-//                        } else {
-//                            type = "png";
-//                        }
-//                    }
-//                } else {
-//                    type = "png";
-//                }
-//        const ref = imageCounter++;
-//        const name = "image" + ref + "." + type;
-//        const image = await toDataURL2(urlImg, name, isBackend, data.fetch);
-//                if (!image) {
-//                    reject("image not load");
-//                }
-//
-//                arrTypes.push(type);
-//                resolve({
-//                        name,
-//                        type,
-//                        image,
-//                        ref,
-//                });
-//      });
-//            }
-//            let imagePromise;
-//            if (sheetData.images) {
-//                if (xl_media_Folder == null) {
-//                    xl_media_Folder = xlFolder?.folder("media");
-//                }
-//                imagePromise = Promise.all([
-//        ...sheetData.images.map(async (v, i) => {
-//                        let indexImageType = v.url.lastIndexOf(".");
-//                let type;
-//                if (indexImageType > 0) {
-//                    type = v.url.substring(indexImageType + 1).toLowerCase();
-//                    if (type.length > 4) {
-//                        if (type.indexOf("gif") >= 0) {
-//                            type = "gif";
-//                        } else if (type.indexOf("jpg") >= 0) {
-//                            type = "jpg";
-//                        } else if (type.indexOf("jpeg") >= 0) {
-//                            type = "jpeg";
-//                        } else {
-//                            type = "png";
-//                        }
-//                    }
-//                } else {
-//                    type = "png";
-//                }
-//                arrTypes.push(type);
-//          const name = "image" + imageCounter++ + "." + type;
-//                return {
-//                        type,
-//                        image: await toDataURL2(v.url, name, isBackend, data.fetch),
-//                obj: v,
-//                        i,
-//                        name,
-//          };
-//        }),
-//      ]);
-//            }
+            ExecutorService executorService = Executors.newFixedThreadPool(10);
+            CompletableFuture<ImageOutput> backgroundImagePromise = null;
+            if (sheetData.getBackgroundImage() != null) {
+                if (xl_media_Folder == null) {
+                    xl_media_Folder = xlFolder + "/" + "media";
+                }
+                var urlImg = sheetData.getBackgroundImage();
+                backgroundImagePromise = CompletableFuture.supplyAsync(() -> {
+                    ImageInput image;
+                    if (fetchFunc != null) {
+                        image = fetchFunc.apply(urlImg);
+                    } else {
+                        image = urlImg;
+                    }
+                    if (image == null) {
+                        throw new Error("image not load");
+                    }
+                    String type;
+                    if (image.getExtension() != null) {
+                        type = image.getExtension().getName();
+                    } else {
+                        type = ImageInput.ImageExtension.PNG.getName();
+                    }
+                    int ref = imageCounter.getAndIncrement();
+                    String name = "image" + ref + "." + type;
+
+
+                    arrTypes.add(type);
+                    return ImageOutput.builder(
+
+                            ).name(name)
+                            .type(type)
+                            .image(image)
+                            .ref(ref).build();
+                }, executorService);
+            }
+            List<CompletableFuture<ImageOutput>> imagePromise = new ArrayList<>();
+
+            if (sheetData.getImages() != null) {
+                if (xl_media_Folder == null) {
+                    xl_media_Folder = xlFolder + "/media";
+                }
+                var imgList = sheetData.getImages();
+                for (AtomicInteger imgIndex = new AtomicInteger(0); imgIndex.get() < imgList.size(); imgIndex.incrementAndGet()) {
+                    var getImage = CompletableFuture.supplyAsync(() -> {
+                        var v = imgList.get(imgIndex.get());
+                        ImageInput url = v.getImage();
+                        ImageInput image;
+                        if (fetchFunc != null) {
+                            image = fetchFunc.apply(url);
+                        } else {
+                            image = url;
+                        }
+                        if (image == null) {
+                            throw new Error("image not load");
+                        }
+                        String type;
+                        if (image.getExtension() != null) {
+                            type = image.getExtension().getName();
+                        } else {
+                            type = ImageInput.ImageExtension.PNG.getName();
+                        }
+                        arrTypes.add(type);
+                        String name = "image" + imageCounter.getAndIncrement() + "." + type;
+
+                        return ImageOutput.builder().image(image).type(type).index(imgIndex.get()).input(v).name(name).build();
+                    }, executorService);
+                    imagePromise.add(getImage);
+                    try {
+                        getImage.get();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    } catch (ExecutionException e) {
+                        throw new RuntimeException(e);
+                    }
+
+                }
+            }
             var sheetHeaderList = sheetData.getHeaders();
             var conditionStyleFunction = sheetData.getStyleCellCondition();
             var mergeDataFunction = sheetData.getMergeRowDataCondition();
             var commentFunction = sheetData.getCommentCondition();
             var multiStyleFunction = sheetData.getMultiStyleCondition();
-            if (sheetHeaderList != null && sheetHeaderList.size() > 0) {
+            if (sheetHeaderList != null) {
                 int colsLength = sheetHeaderList.size();
                 String titleRow = "";
                 if (sheetData.getTitle() != null) {
@@ -769,7 +774,7 @@ public class GenerateExcel {
                                         "\" " +
                                         height +
                                         " spans=\"1:" +
-                                        (left + consommeCol - 1) +
+                                        Math.max((left + consommeCol - 1), 1) +
                                         "\">")
                                 .details("<c r=\"" +
                                         refString +
@@ -789,7 +794,7 @@ public class GenerateExcel {
                                         "\" " +
                                         height +
                                         " spans=\"1:" +
-                                        (left + consommeCol - 1) +
+                                        Math.max((left + consommeCol - 1), 1) +
                                         "\">";
                         titleRow +=
                                 "<c r=\"" +
@@ -828,10 +833,12 @@ public class GenerateExcel {
                 }
                 sheetDimensions.setStart(cols.get(shiftCount) + rowCount);
                 sheetDimensions.setEnd(
-                        cols.get(shiftCount + colsLength - 1) +
+                        cols.get(Math.max(shiftCount + colsLength - 1, 0)) +
                                 (rowCount + sheetData.getData().size()));
-                for (int innerIndex = 0; innerIndex < colsLength; innerIndex++) {
-                    var v = sheetHeaderList.get(innerIndex);
+                int innerIndexLoop = 0;
+                for (Header v : sheetHeaderList) {
+                    int innerIndex = innerIndexLoop;
+//                    var v = sheetHeaderList.get(innerIndex);
                     if (asTable != null) {
                         sheetDataTableColumns +=
                                 "<tableColumn id=\"" +
@@ -846,7 +853,7 @@ public class GenerateExcel {
                     if (v.getFormula() != null) {
                         headerFormula.add(innerIndex);
                     }
-                    if (v.getConditionalFormatting() != null) {
+                    if (v.getConditionalFormatting() != null && addCF) {
                         headerConditionalFormatting.add(innerIndex);
                     }
                     objKey.add(v.getMethod());
@@ -989,6 +996,7 @@ public class GenerateExcel {
 
                         sharedStringIndex++;
                     }
+                    innerIndexLoop++;
                 }
                 // sheetData.headers.forEach((v, innerIndex) => );
                 if (asTable != null) {
@@ -999,7 +1007,7 @@ public class GenerateExcel {
                             "<row r=\"" +
                                     rowCount +
                                     "\" spans=\"1:" +
-                                    colsLength +
+                                    Math.max(colsLength, 1) +
                                     "\" " +
                                     (sheetData.getHeaderHeight() != null
                                             ? "ht=\"" + sheetData.getHeaderHeight() + "\" customHeight=\"1\""
@@ -1054,47 +1062,50 @@ public class GenerateExcel {
                             mDataOption = (DataOption) mData;
                         }
                         if (mData instanceof MergeConfig) {
-                            MergeConfig asMergeConfig=(MergeConfig) mData;
+                            MergeConfig asMergeConfig = (MergeConfig) mData;
                             var typeList = asMergeConfig.getMergeType();
                             var startList = asMergeConfig.getMergeStart();
                             var valueList = asMergeConfig.getMergeValue();
-                            for (int iIndex = 0; iIndex < asMergeConfig.getMergeType().size(); iIndex++) {
-                                var mergeType = typeList.get(iIndex);
-                                var mergeStart = startList.get(iIndex);
-                                var mergeValue = valueList.get(index);
-                                String mergeStr;
-                                if (mergeType == MergeConfig.MergeType.BOTH) {
-                                    mergeStr =
-                                            cols.get(mergeStart) +
-                                                    rowCount +
-                                                    ":" +
-                                                    cols.get(mergeStart + mergeValue.get(1)) +
-                                                    (rowCount + mergeValue.get(0));
-                                } else {
-                                    if (mergeType == MergeConfig.MergeType.COL) {
+                            if (typeList != null) {
+                                for (int iIndex = 0; iIndex < typeList.size(); iIndex++) {
+                                    var mergeType = typeList.get(iIndex);
+                                    var mergeStart = startList.get(iIndex);
+                                    var mergeValue = valueList.get(index);
+                                    String mergeStr;
+                                    if (mergeType == MergeConfig.MergeType.BOTH) {
                                         mergeStr =
                                                 cols.get(mergeStart) +
                                                         rowCount +
                                                         ":" +
-                                                        cols.get(mergeStart + mergeValue.get(0)) +
-                                                        rowCount;
-                                    } else {
-                                        mergeStr =
-                                                cols.get(mergeStart) +
-                                                        rowCount +
-                                                        ":" +
-                                                        cols.get(mergeStart) +
+                                                        cols.get(mergeStart + mergeValue.get(1)) +
                                                         (rowCount + mergeValue.get(0));
+                                    } else {
+                                        if (mergeType == MergeConfig.MergeType.COL) {
+                                            mergeStr =
+                                                    cols.get(mergeStart) +
+                                                            rowCount +
+                                                            ":" +
+                                                            cols.get(mergeStart + mergeValue.get(0)) +
+                                                            rowCount;
+                                        } else {
+                                            mergeStr =
+                                                    cols.get(mergeStart) +
+                                                            rowCount +
+                                                            ":" +
+                                                            cols.get(mergeStart) +
+                                                            (rowCount + mergeValue.get(0));
+                                        }
                                     }
-                                }
 
-                                mergesCellArray.add(mergeStr);
+                                    mergesCellArray.add(mergeStr);
+                                }
                             }
                         }
                         String rowStyle = "";
                         if (mDataOption != null) {
                             rowStyle = mDataOption.getRowStyle();
                         }
+
                         Number heightVal = null;
                         if (keyHeight != null) {
                             heightVal = (Number) keyHeight.invoke(mData);
@@ -1111,9 +1122,9 @@ public class GenerateExcel {
                                 outlineVal = mDataOption.getOutlineLevel();
                             }
                         }
-                        Number hiddenVal = null;
+                        Boolean hiddenVal = null;
                         if (keyHidden != null) {
-                            hiddenVal = (Number) keyHidden.invoke(mData);
+                            hiddenVal = (Boolean) keyHidden.invoke(mData);
                         } else {
                             if (mDataOption != null && mDataOption.getOutlineLevel() != null) {
                                 hiddenVal = mDataOption.getHidden();
@@ -1123,7 +1134,7 @@ public class GenerateExcel {
                                 "<row r=\"" +
                                         rowCount +
                                         "\" spans=\"1:" +
-                                        colsLength +
+                                        Math.max(colsLength, 1) +
                                         "\" " +
                                         (heightVal != null
                                                 ? "ht=\"" + heightVal + "\" customHeight=\"1\""
@@ -1131,14 +1142,15 @@ public class GenerateExcel {
                                         (outlineVal != null
                                                 ? " outlineLevel=\"" + outlineVal + "\""
                                                 : "") +
-                                        (hiddenVal != null ? " hidden=\"" + hiddenVal + "\"" : "") +
+                                        (hiddenVal != null ? " hidden=\"" + (hiddenVal ? "1" : "0") + "\"" : "") +
                                         " >";
                         sheetDataString += rowTagStart;
                         String rowDataString = "";
-//            objKey.forEach((key, keyIndex) =>);
 
-                        for (int keyIndex = 0, objSize = objKey.size(); keyIndex < objSize; keyIndex++) {
+                        for (int keyIndexLoop = 0, objSize = objKey.size(); keyIndexLoop < objSize; keyIndexLoop++) {
+                            int keyIndex = keyIndexLoop;
                             Method key = objKey.get(keyIndex);
+
                             if (shiftCount > 0) {
                                 keyIndex += shiftCount;
                             }
@@ -1148,6 +1160,12 @@ public class GenerateExcel {
                                 dataEl = key.invoke(mData);
                             } catch (Exception ex) {
                                 dataEl = "";
+                            }
+                            if (dataEl == null) {
+                                dataEl = "null";
+                            }
+                            if (dataEl instanceof Boolean) {
+                                dataEl = dataEl.toString();
                             }
                             Number dataElAsNumber = null;
                             if (Utils.booleanCheck(sheetData.getConvertStringToNumber())) {
@@ -1223,41 +1241,43 @@ public class GenerateExcel {
                             }
                             if (mDataOption != null && mDataOption.getComment() != null && mDataOption.getComment().size() > 0) {
                                 var cellComment = mDataOption.getComment().get(key);
-                                hasComment = true;
-                                var commentObj = commentConvertor(
-                                        cellComment,
-                                        styleMapper.getCommentSyntax(),
-                                        defaultCommentStyle
-                                );
-                                if (
-                                        Utils.booleanCheck(commentObj.getHasAuthor()) &&
-                                                commentObj.getAuthor() != null
-                                ) {
-                                    commentAuthor.add(commentObj.getAuthor());
-                                }
-                                shapeCommentRowCol.add(
-                                        ShapeRC.builder()
-                                                .row(String.valueOf(rowCount - 1)).col(String.valueOf(keyIndex))
-                                                .build()
-                                );
-                                var authorId = commentAuthor.size();
-                                if (Utils.booleanCheck(commentObj.getHasAuthor()) &&
-                                        commentObj.getAuthor() != null
-                                ) {
-                                    var auth = commentObj.getAuthor();
-                                    int indexCom = commentAuthor.indexOf(auth);
-                                    if (indexCom < 0) {
-                                        commentAuthor.add(auth);
-                                    } else {
-                                        authorId = indexCom;
+                                if (cellComment != null) {
+                                    hasComment = true;
+                                    var commentObj = commentConvertor(
+                                            cellComment,
+                                            styleMapper.getCommentSyntax(),
+                                            defaultCommentStyle
+                                    );
+                                    if (
+                                            Utils.booleanCheck(commentObj.getHasAuthor()) &&
+                                                    commentObj.getAuthor() != null
+                                    ) {
+                                        commentAuthor.add(commentObj.getAuthor());
                                     }
+                                    shapeCommentRowCol.add(
+                                            ShapeRC.builder()
+                                                    .row(String.valueOf(rowCount - 1)).col(String.valueOf(keyIndex))
+                                                    .build()
+                                    );
+                                    var authorId = commentAuthor.size();
+                                    if (Utils.booleanCheck(commentObj.getHasAuthor()) &&
+                                            commentObj.getAuthor() != null
+                                    ) {
+                                        var auth = commentObj.getAuthor();
+                                        int indexCom = commentAuthor.indexOf(auth);
+                                        if (indexCom < 0) {
+                                            commentAuthor.add(auth);
+                                        } else {
+                                            authorId = indexCom;
+                                        }
+                                    }
+                                    commentString += CommentUtil.generateCommentTag(
+                                            refString,
+                                            commentObj.getCommentStr(),
+                                            commentObj.getCommentStyle(),
+                                            authorId
+                                    );
                                 }
-                                commentString += CommentUtil.generateCommentTag(
-                                        refString,
-                                        commentObj.getCommentStr(),
-                                        commentObj.getCommentStyle(),
-                                        authorId
-                                );
                             }
                             var formula = formulaSheetObj.get(refString);
                             if (formula != null) {
@@ -1272,7 +1292,7 @@ public class GenerateExcel {
                                 formulaSheetObj.remove(refString);
                             } else {
                                 if (dataEl instanceof String) {
-                                    String dataElString=(String) dataEl;
+                                    String dataElString = (String) dataEl;
                                     var hasStyleKey = data.getStyles().containsKey(cellStyle);
                                     String localCell =
                                             "<c r=\"" +
@@ -1331,7 +1351,7 @@ public class GenerateExcel {
                                                             ? "s=\"" + data.getStyles().get(cellStyle).getIndex() + "\""
                                                             : "") +
                                                     "><v>" +
-                                                    dataElAsNumber +
+                                                    (dataElAsNumber != null ? dataElAsNumber : dataEl) +
                                                     "</v></c>";
                                     sheetDataString += localCell;
                                     rowDataString += localCell;
@@ -1391,569 +1411,554 @@ public class GenerateExcel {
                                         .build()
                         );
                     }
-                    if (headerConditionalFormatting.size() > 0) {
-                        for (var v : headerConditionalFormatting) {
-                            var header = sheetData.getHeaders().get(v.intValue());
-                            if (header.getConditionalFormatting() == null) {
-                                continue;
-                            }
-                            var ob = header.getConditionalFormatting();
-                            ob.setStart(Utils.booleanCheck(sheetData.getWithoutHeader()) ? cols.get(v.intValue()) + "1" : cols.get(v.intValue()) + "2");
-
-                            conditionalFormatting.add(ob);
+                }
+                if (headerConditionalFormatting.size() > 0 && addCF) {
+                    for (var v : headerConditionalFormatting) {
+                        var header = sheetData.getHeaders().get(v.intValue());
+                        if (header.getConditionalFormatting() == null) {
+                            continue;
                         }
+                        var ob = header.getConditionalFormatting();
+                        ob.setStart(Utils.booleanCheck(sheetData.getWithoutHeader()) ? cols.get(v.intValue()) + "1" : cols.get(v.intValue()) + "2");
+                        ob.setEnd(cols.get(v.intValue()) + (rowCount - 1));
+                        conditionalFormatting.add(ob);
                     }
-                    if (formulaSheetObj != null) {
-                        List<String> remindFormulaKey = new ArrayList<>(formulaSheetObj.keySet());
-                        remindFormulaKey.sort((a, b) -> a.compareTo(b) > 0 ? 1 : -1);
+                }
+                if (formulaSheetObj != null) {
+                    List<String> remindFormulaKey = new ArrayList<>(formulaSheetObj.keySet());
+                    remindFormulaKey.sort((a, b) -> a.compareTo(b) > 0 ? 1 : -1);
 
-                        if (remindFormulaKey.size() > 0) {
-                            HashMap<Number, String> rF = new HashMap<>();
-                            for (var v : remindFormulaKey) {
-                                var f = FormulaUtil.generateCellRowCol(
-                                        v,
-                                        formulaSheetObj.get(v),
-                                        sheetDataId,
-                                        data.getStyles()
+                    if (remindFormulaKey.size() > 0) {
+                        HashMap<Number, String> rF = new HashMap<>();
+                        for (var v : remindFormulaKey) {
+                            var f = FormulaUtil.generateCellRowCol(
+                                    v,
+                                    formulaSheetObj.get(v),
+                                    sheetDataId,
+                                    data.getStyles()
+                            );
+                            if (Utils.booleanCheck(f.getNeedCalcChain())) {
+                                needCalcChain = true;
+                                calcChainValue += f.getChainCell();
+                            }
+                            if (!rF.containsKey(f.getRow())) {
+                                rF.put(f.getRow(), f.getCell());
+                            } else {
+                                rF.put(f.getRow(), rF.get(f.getRow()) + f.getCell());
+                            }
+                        }
+                        var rFKeySet = new ArrayList<>(rF.keySet());
+                        rFKeySet.sort((a, b) -> a.intValue() > b.intValue() ? 1 : -1);
+                        for (var val : rFKeySet) {
+                            var l = rF.get(val);
+                            var rowDataMap = rowMap.get(val);
+                            if (rowDataMap != null) {
+                                String body =
+                                        rowDataMap.getStartTag() +
+                                                rowDataMap.getDetails() +
+                                                l +
+                                                rowDataMap.getEndTag();
+
+                                sheetDataString = sheetDataString.replaceFirst(rowDataMap.getStartTag() + "[\\n\\s\\S]*?</row>", body);
+                            } else {
+                                sheetDataString +=
+                                        "<row r=\"" +
+                                                val +
+                                                "\" spans=\"1:" +
+                                                Math.max(colsLength, 1) +
+                                                "\"  >" +
+                                                l +
+                                                "</row>";
+                                rowMap.put(val.intValue(), RowMap.builder()
+                                        .startTag("<row r=\"" + val + "\" spans=\"1:" + Math.max(colsLength, 1) + "\"  >")
+                                        .endTag("</row>")
+                                        .details(l)
+                                        .build()
                                 );
-                                if (Utils.booleanCheck(f.getNeedCalcChain())) {
-                                    needCalcChain = true;
-                                    calcChainValue += f.getChainCell();
-                                }
-                                if (!rF.containsKey(f.getRow())) {
-                                    rF.put(f.getRow(), f.getCell());
-                                } else {
-                                    rF.put(f.getRow(), rF.get(f.getRow()) + f.getCell());
-                                }
                             }
-                            var rFKeySet = rF.keySet();
-                            for (var val : rFKeySet) {
-
-//                            const val = v as keyof object;
-                                var l = rF.get(val);
-                                var rowDataMap = rowMap.get(val);
-                                if (rowDataMap != null) {
-                                    String body =
-                                            rowDataMap.getStartTag() +
-                                                    rowDataMap.getDetails() +
-                                                    l +
-                                                    rowDataMap.getEndTag();
-
-                                    sheetDataString = sheetDataString.replaceFirst(rowDataMap.getStartTag() + "[\\n\\s\\S]*?</row>", body);
-                                } else {
-                                    sheetDataString +=
-                                            "<row r=\"" +
-                                                    val +
-                                                    "\" spans=\"1:" +
-                                                    colsLength +
-                                                    "\"  >" +
-                                                    l +
-                                                    "</row>";
-                                    rowMap.put(val.intValue(), RowMap.builder()
-                                            .startTag("<row r=\"" + val + "\" spans=\"1:" + colsLength + "\"  >")
-                                            .endTag("</row>")
-                                            .details(l)
-                                            .build()
-                                    );
-                                }
-                            }
-
                         }
+
                     }
                 }
+            }
 
-                if (index > 0) {
-                    sheetContentType +=
-                            "<Override" +
-                                    "    ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"" +
-                                    "    PartName=\"/xl/worksheets/sheet" +
-                                    (index + 1) +
-                                    ".xml\" />";
-                }
-                String shName = sheetData.getName() != null ? sheetData.getName() : "sheet" + (index + 1);
-                String shState = sheetData.getState() != null ? sheetData.getState().getLabel() : "visible";
-                workbookString +=
-                        "<sheet state=\"" +
-                                shState +
-                                "\" name=\"" +
-                                shName +
-                                "\" sheetId=\"" +
-                                (index + 1) +
-                                "\" r:id=\"rId" +
-                                (indexId + 1) +
-                                "\" />";
-                workbookRelString +=
-                        "<Relationship Id=\"rId" +
-                                (indexId + 1) +
-                                "\"" +
-                                " Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\"" +
-                                " Target=\"worksheets/sheet" +
+            if (index > 0) {
+                sheetContentType +=
+                        "<Override" +
+                                "    ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"" +
+                                "    PartName=\"/xl/worksheets/sheet" +
                                 (index + 1) +
                                 ".xml\" />";
-                sheetNameApp += "<vt:lpstr>" + ("sheet" + (index + 1)) + "</vt:lpstr>";
-                if (Utils.booleanCheck(sheetData.getSelected())) {
-                    selectedAdded = true;
-                    activeTabIndex = index;
-                }
-                var filterMode = sheetData.getSortAndFilter() != null ? "filterMode=\"1\"" : "";
-                var backgroundImageRef = -1;
-                //TODO NExt
-//            if (backgroundImagePromise) {
-//                await backgroundImagePromise.then((res) => {
-//                        let result = res as any;
-//                backgroundImageRef = result.ref;
-//                xl_media_Folder?.file(result.name, result.image);
-//      });
-//            }
-                boolean hasImages = false;
-                String drawersContent = "";
-                String drawersRels = "";
-                //TODO NEXT
-//            if (imagePromise) {
-//                hasImages = true;
-//                await imagePromise.then((res) => {
-//                        let drawerStr = "";
-//                res.forEach((val, i) => {
-//          const index = i + 1;
-//                    let v = val.image;
-//          const name = val.name;
-//                    let from = val.obj.from;
-//                    let to = val.obj.to;
-//                    let margin = val.obj.margin;
-//                    let imageType = val.type;
-//                    let type = val.obj.type;
-//                    let extent = val.obj.extent;
-//                    if (typeof extent == "undefined") {
-//                        extent = {
-//                                cx: 200000,
-//                                cy: 200000,
-//            };
-//                    }
-//                    let result: {
-//                        start: {
-//                            col: number;
-//                            row: number;
-//                            mL?: number;
-//                            mT?: number;
-//                        };
-//                        end: {
-//                            col: number;
-//                            row: number;
-//                            mR?: number;
-//                            mB?: number;
-//                        };
-//                    } = {
-//                        start: {
-//                            col: 0,
-//                                    row: 0,
-//                                    mL: 0,
-//                                    mT: 0,
-//                        },
-//                        end: {
-//                            col: 1,
-//                                    row: 1,
-//                                    mR: 0,
-//                                    mB: 0,
-//                        },
-//                    };
-//                    if (typeof from == "string" && from.length >= 2) {
-//                        let p = getColRowBaseOnRefString(from, cols);
-//                        result.start = {
-//              ...p,
-//            };
-//                        result.end = {
-//                                col: p.col + 1,
-//                                row: p.row + 1,
-//            };
-//                    }
-//                    if (typeof to == "string" && to.length >= 2) {
-//                        let p = getColRowBaseOnRefString(to, cols);
-//                        p.row += 1;
-//                        p.col += 1;
-//                        result.end = {
-//              ...p,
-//            };
-//                    }
-//                    result.end.mR = 0;
-//                    result.end.mB = 0;
-//                    result.start.mL = 0;
-//                    result.start.mT = 0;
-//                    if (margin) {
-//                        if (margin.all || margin.right) {
-//                            result.end.mR = margin.all || margin.right;
-//                        }
-//                        if (margin.all || margin.bottom) {
-//                            result.end.mB = margin.all || margin.bottom;
-//                        }
-//                        if (margin.all || margin.left) {
-//                            result.start.mL = margin.all || margin.left;
-//                        }
-//                        if (margin.all || margin.top) {
-//                            result.start.mT = margin.all || margin.top;
-//                        }
-//                    }
-//                    if (type == "one") {
-//                        drawersContent +=
-//                                "<xdr:oneCellAnchor>" +
-//                                        "<xdr:from>" +
-//                                        "<xdr:col>" +
-//                                        result.start.col +
-//                                        "</xdr:col>" +
-//                                        "<xdr:colOff>" +
-//                                        result.start.mT +
-//                                        "</xdr:colOff>" +
-//                                        "<xdr:row>" +
-//                                        result.start.row +
-//                                        "</xdr:row>" +
-//                                        "<xdr:rowOff>" +
-//                                        result.start.mL +
-//                                        "</xdr:rowOff>" +
-//                                        "</xdr:from>" +
-//                                        "<xdr:ext cx=\"" +
-//                                        extent.cx +
-//                                        "\" cy=\"" +
-//                                        extent.cy +
-//                                        "\"/>" +
-//                                        "<xdr:pic>" +
-//                                        "<xdr:nvPicPr>" +
-//                                        "<xdr:cNvPr id=\"" +
-//                                        index +
-//                                        "\" name=\"Picture " +
-//                                        index +
-//                                        '">' +
-//                                        "</xdr:cNvPr>" +
-//                                        '<xdr:cNvPicPr preferRelativeResize="0" />' +
-//                                        "</xdr:nvPicPr>" +
-//                                        "<xdr:blipFill>" +
-//                                        '<a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId' +
-//                                        index +
-//                                        '">' +
-//                                        "</a:blip>" +
-//                                        "<a:stretch>" +
-//                                        "<a:fillRect />" +
-//                                        "</a:stretch>" +
-//                                        "</xdr:blipFill>" +
-//                                        "<xdr:spPr>" +
-//                                        "<a:prstGeom prst=\"rect\">" +
-//                                        "<a:avLst />" +
-//                                        "</a:prstGeom>" +
-//                                        "<a:noFill />" +
-//                                        "</xdr:spPr>" +
-//                                        "</xdr:pic>" +
-//                                        "<xdr:clientData />" +
-//                                        "</xdr:oneCellAnchor>";
-//                    } else {
-//                        drawersContent +=
-//                                "<xdr:twoCellAnchor editAs=\"oneCell\">" +
-//                                        "<xdr:from>" +
-//                                        "<xdr:col>" +
-//                                        result.start.col +
-//                                        "</xdr:col>" +
-//                                        "<xdr:colOff>" +
-//                                        result.start.mT +
-//                                        "</xdr:colOff>" +
-//                                        "<xdr:row>" +
-//                                        result.start.row +
-//                                        "</xdr:row>" +
-//                                        "<xdr:rowOff>" +
-//                                        result.start.mL +
-//                                        "</xdr:rowOff>" +
-//                                        "</xdr:from>" +
-//                                        "<xdr:to>" +
-//                                        "<xdr:col>" +
-//                                        result.end.col +
-//                                        "</xdr:col>" +
-//                                        "<xdr:colOff>" +
-//                                        result.end.mB +
-//                                        "</xdr:colOff>" +
-//                                        "<xdr:row>" +
-//                                        result.end.row +
-//                                        "</xdr:row>" +
-//                                        "<xdr:rowOff>" +
-//                                        result.end.mR +
-//                                        "</xdr:rowOff>" +
-//                                        "</xdr:to>" +
-//                                        "<xdr:pic>" +
-//                                        "<xdr:nvPicPr>" +
-//                                        "<xdr:cNvPr id=\"" +
-//                                        index +
-//                                        "\" name=\"Picture " +
-//                                        index +
-//                                        '">' +
-//                                        "</xdr:cNvPr>" +
-//                                        '<xdr:cNvPicPr preferRelativeResize="0" />' +
-//                                        "</xdr:nvPicPr>" +
-//                                        "<xdr:blipFill>" +
-//                                        '<a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId' +
-//                                        index +
-//                                        '">' +
-//                                        "</a:blip>" +
-//                                        "<a:stretch>" +
-//                                        "<a:fillRect />" +
-//                                        "</a:stretch>" +
-//                                        "</xdr:blipFill>" +
-//                                        "<xdr:spPr>" +
-//                                        "<a:prstGeom prst=\"rect\">" +
-//                                        "<a:avLst />" +
-//                                        "</a:prstGeom>" +
-//                                        "<a:noFill />" +
-//                                        "</xdr:spPr>" +
-//                                        "</xdr:pic>" +
-//                                        "<xdr:clientData />" +
-//                                        "</xdr:twoCellAnchor>";
-//                    }
-//                    xl_media_Folder?.file(name, v!);
-//                    drawerStr +=
-//                            "<Relationship Id=\"rId" +
-//                                    index +
-//                                    "\" " +
-//                                    "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" " +
-//                                    'Target="../media/' +
-//                                    name +
-//                                    "\" />";
-//                });
-//                drawersRels =
-//                        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
-//                                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-//                                drawerStr +
-//                                "</Relationships>";
-//      });
-//            }
-                Set<String> mergesCellArraySet = new HashSet<>(mergesCellArray);
-                String cFDataString = "";
-                int priorityCounter = 1;
-                if (conditionalFormatting.size() > 0) {
-                    String cf = "";
-                    for (var cu : conditionalFormatting) {
-                        if (cu.getType() == ConditionalFormattingOption.Type.CELLS) {
-                            if (cu.getOperator() == ConditionalFormattingOption.ConditionalFormattingCellsOperation.CT) {
-                                int styleIndexOfCondition = 0;
-                                if (cu.getStyleId() != null) {
-                                    if (cFMapIndex.containsKey(cu.getStyleId())) {
-                                        styleIndexOfCondition = cFMapIndex.get(cu.getStyleId()).intValue();
-                                    }
-                                }
-                                cf +=
-                                        "<conditionalFormatting sqref=\"" +
-                                                cu.getStart() +
-                                                ":" +
-                                                cu.getEnd() +
-                                                "\">" +
-                                                "<cfRule type=\"containsText\" dxfId=\"" +
-                                                (styleIndexOfCondition) +
-                                                "\" priority=\"" +
-                                                (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
-                                                "\"  operator=\"containsText\" text=\"" +
-                                                cu.getValue() +
-                                                "\"><formula>NOT(ISERROR(SEARCH(\"" +
-                                                cu.getValue() +
-                                                "\"," +
-                                                cu.getStart() +
-                                                ")))</formula></cfRule></conditionalFormatting>"
-                                ;
-                                continue;
-                            }
-                            if (
-                                    cu.getOperator() == null || !operatorMap.containsKey(cu.getOperator())
-                            ) {
-
-                                continue;
-                            }
-                            int styleIndexOfCondition = 0;
-                            if (cu.getStyleId() != null) {
-                                if (cFMapIndex.containsKey(cu.getStyleId())) {
-                                    styleIndexOfCondition = cFMapIndex.get(cu.getStyleId()).intValue();
-                                }
-                            }
-
-                            cf +=
-                                    "<conditionalFormatting sqref=\"" +
-                                            cu.getStart() +
-                                            ":" +
-                                            cu.getEnd() +
-                                            "\"><cfRule type=\"cellIs\" dxfId=\"" +
-                                            (styleIndexOfCondition) +
-                                            "\" priority=\"" +
-                                            (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
-                                            "\" operator=\"" +
-                                            operatorMap.get(((ConditionalFormattingOption.ConditionalFormattingCellsOperation) cu.getOperator()).getOperationType()) +
-                                            "\">" +
-                                            (cu.getValue() instanceof List<?>
-                                                    ? ((List<String>) cu.getValue()).stream().reduce("", (rC, cr) -> rC + "<formula>" + cr + "</formula>")
-                                                    : "<formula>" + cu.getValue() + "</formula>") +
-                                            "</cfRule></conditionalFormatting>"
-                            ;
-                            continue;
-                        } else if (cu.getType() == ConditionalFormattingOption.Type.TOP) {
-                            int styleIndexOfCondition = 0;
-                            if (cu.getStyleId() != null) {
-                                if (cFMapIndex.containsKey(cu.getStyleId())) {
-                                    styleIndexOfCondition = cFMapIndex.get(cu.getStyleId()).intValue();
-                                }
-                            }
-
-                            cf +=
-                                    "<conditionalFormatting sqref=\"" +
-                                            cu.getStart() +
-                                            ":" +
-                                            cu.getEnd() +
-                                            "\"><cfRule type=\"" +
-                                            (cu.getOperator() != null ? "aboveAverage" : "top10") +
-                                            "\" dxfId=\"" +
-                                            (styleIndexOfCondition) +
-                                            "\" priority=\"" +
-                                            (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
-                                            "\" " +
-                                            (cu.getBottom() ? "bottom=\"1\"" : "") +
-                                            " " +
-                                            (cu.getPercent() != null ? "percent=\"1\"" : "") +
-                                            "  rank=\"" +
-                                            cu.getValue() +
-                                            "\" " +
-                                            (cu.getOperator() == ConditionalFormattingOption.ConditionalFormattingTopOperation.BELOW_AVERAGE ? "aboveAverage=\"0\"" : "") +
-                                            "/></conditionalFormatting>";
-                            continue;
-                        } else if (cu.getType() == ConditionalFormattingOption.Type.ICON_SET) {
-                            String percentValue = "";
-                            if (cu.getOperator() == null || !(cu.getOperator() instanceof ConditionalFormattingOption.ConditionalFormattingIconSetOperation)) {
-                                continue;
-                            }
-                            var opIconSet=(ConditionalFormattingOption.ConditionalFormattingIconSetOperation) cu.getOperator();
-                            if (opIconSet.getOperationType().indexOf("5") == 0) {
-                                percentValue =
-                                        "<cfvo type=\"percent\" val=\"0\"/><cfvo type=\"percent\" val=\"20\"/><cfvo type=\"percent\" val=\"40\"/><cfvo type=\"percent\" val=\"60\"/><cfvo type=\"percent\" val=\"80\"/>";
-                            } else if (opIconSet.getOperationType().indexOf("4") == 0) {
-                                percentValue =
-                                        "<cfvo type=\"percent\" val=\"0\"/><cfvo type=\"percent\" val=\"25\"/><cfvo type=\"percent\" val=\"50\"/><cfvo type=\"percent\" val=\"75\"/>";
-                            } else {
-                                percentValue =
-                                        "<cfvo type=\"percent\" val=\"0\"/><cfvo type=\"percent\" val=\"33\"/><cfvo type=\"percent\" val=\"67\"/>";
-                            }
-
-                            cf +=
-                                    "<conditionalFormatting sqref=\"" +
-                                            cu.getStart() +
-                                            ":" +
-                                            cu.getEnd() +
-                                            "\"><cfRule type=\"iconSet\" priority=\"" +
-                                            (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
-                                            "\"><iconSet iconSet=\"" +
-                                            opIconSet.getOperationType() +
-                                            "\">" +
-                                            percentValue +
-                                            "</iconSet></cfRule></conditionalFormatting>"
-                            ;
-                            continue;
-                        } else if (cu.getType() == ConditionalFormattingOption.Type.COLOR_SCALE) {
-                            cf +=
-                                    "<conditionalFormatting sqref=\"" +
-                                            cu.getStart() +
-                                            ":" +
-                                            cu.getEnd() +
-                                            "\"><cfRule type=\"colorScale\" priority=\"" +
-                                            (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
-                                            "\"><colorScale><cfvo type=\"min\"/>" +
-                                            (cu.getOperator().equals("percentile")
-                                                    ? "<cfvo type=\"percentile\" val=\"" + cu.getValue() + "\"/>"
-                                                    : "") +
-                                            "<cfvo type=\"max\"/>" +
-                                            (cu.getColors() != null
-                                                    ? cu.getColors().stream().reduce("", (reColors, colorCu) -> reColors +
-                                                    "<color rgb=\"" +
-                                                    ColorUtils.convertToHex(colorCu) +
-                                                    "\"/>"
-                                            )
-                                                    : "<color rgb=\"FFF8696B\"/><color rgb=\"FFFFEB84\"/><color rgb=\"FF63BE7B\"/>") +
-                                            "</colorScale></cfRule></conditionalFormatting>";
-                            continue;
-                        } else if (cu.getType() == ConditionalFormattingOption.Type.DATABAR) {
-                            cf +=
-                                    "<conditionalFormatting sqref=\"" +
-                                            cu.getStart() +
-                                            ":" +
-                                            cu.getEnd() +
-                                            "\"><cfRule type=\"dataBar\" priority=\"" +
-                                            (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
-                                            "\"><dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/>" +
-                                            (cu.getColors() != null
-                                                    ? cu.getColors().stream().reduce("", (reColors, colorCu) -> reColors +
-                                                    "<color rgb=\"" +
-                                                    ColorUtils.convertToHex(colorCu) +
-                                                    "\"/>")
-                                                    : "<color rgb=\"FF638EC6\"/>") +
-                                            "</dataBar></cfRule></conditionalFormatting>";
-                        }
-                    }
-                    cFDataString = cf;
-                }
-                if ((hasCheckbox || hasComment || hasImages) && xl_drawingsFolder == null) {
-                    xl_drawingsFolder = xlFolder + "/drawings";
-                }
-                if (hasImages && xl_drawings_relsFolder == null) {
-                    xl_drawings_relsFolder = xl_drawingsFolder + "/_rels";
-                }
-                mapData.put("sheet" + (index + 1), SheetProcessResult.builder()
-                        .indexId(indexId + 1)
-                        .key("sheet" + (index + 1))
-                        .sheetName(shName)
-                        .sheetDataTableColumns(sheetDataTableColumns)
-                        .backgroundImageRef(backgroundImageRef)
-                        .sheetDimensions(sheetDimensions)
-                        .asTable(asTable)
-
-                        .sheetDropDown(DropDownUtil.generateDropDown(sheetData.getDropDowns()))
-                        .sheetDataString(sheetDataString)
-                        .sheetBreakLine(sheetBreakLine)
-                        .viewType(viewType)
-                        .hasComment(hasComment)
-                        .drawersContent(drawersContent)
-                        .cFDataString(cFDataString)
-                        .sheetMargin(sheetMargin)
-                        .sheetHeaderFooter(sheetHeaderFooter)
-                        .isPortrait(isPortrait)
-                        .drawersRels(drawersRels)
-                        .hasImages(hasImages)
-                        .hasCheckbox(hasCheckbox)
-                        .formRel(formRel)
-                        .checkboxDrawingContent(checkboxDrawingContent)
-                        .checkboxForm(checkboxForm)
-                        .checkboxSheetContent(checkboxSheetContent)
-                        .checkboxShape(checkboxShape)
-                        .commentString(commentString)
-                        .commentAuthor(commentAuthor)
-                        .shapeCommentRowCol(shapeCommentRowCol)
-                        .splitOption(splitOption)
-                        .sheetViewProperties(sheetViewProperties)
-                        .sheetSizeString(
-                                sheetSizeString.length() > 0
-                                        ? "<cols>" + sheetSizeString + "</cols>"
-                                        : "")
-                        .protectionOption(sheetData.generateProtectedString())
-                        .merges(
-                                mergesCellArray.size() > 0
-                                        ? mergesCellArray.stream().reduce("<mergeCells count=\"" + mergesCellArray.size() + "\">", (mResult, currRef) -> mResult + " <mergeCell ref=\"" + currRef + "\" />") +
-                                        " </mergeCells>"
-                                        : "")
-                        .selectedView(sheetData.getSelected())
-                        .sheetSortFilter(sheetSortFilter)
-                        .tabColor(sheetData.getTabColor() != null ? "<sheetPr codeName=\"" +
-                                ("Sheet" + (index + 1)) +
-                                "\" " +
-                                filterMode +
-                                " >" +
-                                "<tabColor rgb=\"" +
-                                sheetData.getTabColor().replace("#", "") +
-                                "\" />" +
-                                "</sheetPr>"
-                                : "<sheetPr " +
-                                filterMode +
-                                " >" +
-                                "<outlinePr summaryBelow=\"0\" summaryRight=\"0\" />" +
-                                "</sheetPr>")
-
-                        .build());
-                indexId++;
             }
+            String shName = sheetData.getName() != null ? sheetData.getName() : "sheet" + (index + 1);
+            String shState = sheetData.getState() != null ? sheetData.getState().getLabel() : "visible";
+            workbookString +=
+                    "<sheet state=\"" +
+                            shState +
+                            "\" name=\"" +
+                            shName +
+                            "\" sheetId=\"" +
+                            (index + 1) +
+                            "\" r:id=\"rId" +
+                            (indexId + 1) +
+                            "\" />";
+            workbookRelString +=
+                    "<Relationship Id=\"rId" +
+                            (indexId + 1) +
+                            "\"" +
+                            " Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\"" +
+                            " Target=\"worksheets/sheet" +
+                            (index + 1) +
+                            ".xml\" />";
+            sheetNameApp += "<vt:lpstr>" + ("sheet" + (index + 1)) + "</vt:lpstr>";
+            if (Utils.booleanCheck(sheetData.getSelected())) {
+                selectedAdded = true;
+                activeTabIndex = index;
+            }
+            var filterMode = sheetData.getSortAndFilter() != null ? "filterMode=\"1\"" : "";
+            var backgroundImageRef = -1;
+
+            if (backgroundImagePromise != null) {
+                ImageOutput res = null;
+                try {
+                    res = backgroundImagePromise.get();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                } catch (ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+                backgroundImageRef = res.getRef();
+                resultAssetsMap.put(xl_media_Folder + "/" + res.getName(), res);
+
+            }
+            boolean hasImages = false;
+            String drawersContent = "";
+            String drawersRels = "";
+            if (imagePromise.size() > 0) {
+                CompletableFuture<Void> allImage = CompletableFuture.allOf(imagePromise.toArray(new CompletableFuture[imagePromise.size()]));
+
+                try {
+                    allImage.get();
+
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                } catch (ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+                hasImages = true;
+
+                String drawerStr = "";
+                int imagIndex = 0;
+                for (var resultProcess : imagePromise) {
+                    ImageOutput val = null;
+                    try {
+                        val = resultProcess.get();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    } catch (ExecutionException e) {
+                        throw new RuntimeException(e);
+                    }
+// TODO gif problem not moving
+                    int processIndex = imagIndex + 1;
+                    var name = val.getName();
+                    String from = val.getInput().getFrom();
+                    String to = val.getInput().getTo();
+                    var margin = val.getInput().getMargin();
+                    var type = val.getInput().getType();
+                    var extent = val.getInput().getExtent();
+                    if (extent == null) {
+                        extent = Sheet.ImageTypes.Extend.builder()
+                                .cx(200000)
+                                .cy(200000)
+                                .build();
+                    }
+                    ResultImageProcess result = ResultImageProcess.builder()
+                            .start(
+                                    ResultImageProcess.Setting.builder()
+                                            .col(0).row(0).mL(0).mT(0)
+                                            .build()
+                            )
+                            .end(ResultImageProcess.Setting.builder()
+                                    .col(1).row(1).mR(0).mB(0)
+                                    .build())
+                            .build();
+                    if (from != null && from.length() >= 2) {
+                        var p = ColumnUtils.getColRowBaseOnRefString(from, cols);
+                        result.setStart(p);
+                        result.setEndPlusOne(p);
+                    }
+                    if (to != null && to.length() >= 2) {
+                        var p = ColumnUtils.getColRowBaseOnRefString(to, cols);
+
+                        result.setEndPlusOne(p);
+                    }
+                    if (margin != null) {
+                        result.setMargin(margin);
+                    }
+                    if (type == Sheet.ImageTypes.Type.ONE) {
+                        drawersContent +=
+                                "<xdr:oneCellAnchor>" +
+                                        "<xdr:from>" +
+                                        "<xdr:col>" +
+                                        result.getStart().getCol() +
+                                        "</xdr:col>" +
+                                        "<xdr:colOff>" +
+                                        result.getStart().getMT() +
+                                        "</xdr:colOff>" +
+                                        "<xdr:row>" +
+                                        result.getStart().getRow() +
+                                        "</xdr:row>" +
+                                        "<xdr:rowOff>" +
+                                        result.getStart().getML() +
+                                        "</xdr:rowOff>" +
+                                        "</xdr:from>" +
+                                        "<xdr:ext cx=\"" +
+                                        extent.getCx() +
+                                        "\" cy=\"" +
+                                        extent.getCy() +
+                                        "\"/>" +
+                                        "<xdr:pic>" +
+                                        "<xdr:nvPicPr>" +
+                                        "<xdr:cNvPr id=\"" +
+                                        processIndex +
+                                        "\" name=\"Picture " +
+                                        processIndex +
+                                        "\">" +
+                                        "</xdr:cNvPr>" +
+                                        "<xdr:cNvPicPr preferRelativeResize=\"0\" />" +
+                                        "</xdr:nvPicPr>" +
+                                        "<xdr:blipFill>" +
+                                        "<a:blip xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:embed=\"rId" +
+                                        processIndex +
+                                        "\">" +
+                                        "</a:blip>" +
+                                        "<a:stretch>" +
+                                        "<a:fillRect />" +
+                                        "</a:stretch>" +
+                                        "</xdr:blipFill>" +
+                                        "<xdr:spPr>" +
+                                        "<a:prstGeom prst=\"rect\">" +
+                                        "<a:avLst />" +
+                                        "</a:prstGeom>" +
+                                        "<a:noFill />" +
+                                        "</xdr:spPr>" +
+                                        "</xdr:pic>" +
+                                        "<xdr:clientData />" +
+                                        "</xdr:oneCellAnchor>";
+                    } else {
+                        drawersContent +=
+                                "<xdr:twoCellAnchor editAs=\"oneCell\">" +
+                                        "<xdr:from>" +
+                                        "<xdr:col>" +
+                                        result.getStart().getCol() +
+                                        "</xdr:col>" +
+                                        "<xdr:colOff>" +
+                                        result.getStart().getMT() +
+                                        "</xdr:colOff>" +
+                                        "<xdr:row>" +
+                                        result.getStart().getRow() +
+                                        "</xdr:row>" +
+                                        "<xdr:rowOff>" +
+                                        result.getStart().getML() +
+                                        "</xdr:rowOff>" +
+                                        "</xdr:from>" +
+                                        "<xdr:to>" +
+                                        "<xdr:col>" +
+                                        result.getEnd().getCol() +
+                                        "</xdr:col>" +
+                                        "<xdr:colOff>" +
+                                        result.getEnd().getMB() +
+                                        "</xdr:colOff>" +
+                                        "<xdr:row>" +
+                                        result.getEnd().getRow() +
+                                        "</xdr:row>" +
+                                        "<xdr:rowOff>" +
+                                        result.getEnd().getMR() +
+                                        "</xdr:rowOff>" +
+                                        "</xdr:to>" +
+                                        "<xdr:pic>" +
+                                        "<xdr:nvPicPr>" +
+                                        "<xdr:cNvPr id=\"" +
+                                        processIndex +
+                                        "\" name=\"Picture " +
+                                        processIndex +
+                                        "\">" +
+                                        "</xdr:cNvPr>" +
+                                        "<xdr:cNvPicPr preferRelativeResize=\"0\" />" +
+                                        "</xdr:nvPicPr>" +
+                                        "<xdr:blipFill>" +
+                                        "<a:blip xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:embed=\"rId" +
+                                        processIndex +
+                                        "\">" +
+                                        "</a:blip>" +
+                                        "<a:stretch>" +
+                                        "<a:fillRect />" +
+                                        "</a:stretch>" +
+                                        "</xdr:blipFill>" +
+                                        "<xdr:spPr>" +
+                                        "<a:prstGeom prst=\"rect\">" +
+                                        "<a:avLst />" +
+                                        "</a:prstGeom>" +
+                                        "<a:noFill />" +
+                                        "</xdr:spPr>" +
+                                        "</xdr:pic>" +
+                                        "<xdr:clientData />" +
+                                        "</xdr:twoCellAnchor>";
+                    }
+                    resultAssetsMap.put(xl_media_Folder + "/" + name, val);
+                    drawerStr +=
+                            "<Relationship Id=\"rId" +
+                                    processIndex +
+                                    "\" " +
+                                    "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" " +
+                                    "Target=\"../media/" +
+                                    name +
+                                    "\" />";
+
+                    imagIndex++;
+                }
+                drawersRels =
+                        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                                drawerStr +
+                                "</Relationships>";
+            }
+            executorService.shutdown();
+            Set<String> mergesCellArraySet = new HashSet<>(mergesCellArray);
+            String cFDataString = "";
+            int priorityCounter = 1;
+            if (conditionalFormatting.size() > 0 && addCF) {
+                String cf = "";
+                for (var cu : conditionalFormatting) {
+                    if (cu.getType() == ConditionalFormattingOption.Type.CELLS) {
+                        if (cu.getOperator() == ConditionalFormattingOption.ConditionalFormattingCellsOperation.CT) {
+                            int styleIndexOfCondition = 0;
+                            if (cu.getStyleId() != null) {
+                                if (cFMapIndex.containsKey(cu.getStyleId())) {
+                                    styleIndexOfCondition = cFMapIndex.get(cu.getStyleId()).intValue();
+                                }
+                            }
+                            cf +=
+                                    "<conditionalFormatting sqref=\"" +
+                                            cu.getStart() +
+                                            ":" +
+                                            cu.getEnd() +
+                                            "\">" +
+                                            "<cfRule type=\"containsText\" dxfId=\"" +
+                                            (styleIndexOfCondition) +
+                                            "\" priority=\"" +
+                                            (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
+                                            "\"  operator=\"containsText\" text=\"" +
+                                            cu.getValue() +
+                                            "\"><formula>NOT(ISERROR(SEARCH(\"" +
+                                            cu.getValue() +
+                                            "\"," +
+                                            cu.getStart() +
+                                            ")))</formula></cfRule></conditionalFormatting>"
+                            ;
+                            continue;
+                        }
+                        String operationType = ((ConditionalFormattingOption.ConditionalFormattingCellsOperation) cu.getOperator()).getOperationType();
+                        if (
+                                cu.getOperator() == null || !operatorMap.containsKey(operationType)
+                        ) {
+
+                            continue;
+                        }
+                        int styleIndexOfCondition = 0;
+                        if (cu.getStyleId() != null) {
+                            if (cFMapIndex.containsKey(cu.getStyleId())) {
+                                styleIndexOfCondition = cFMapIndex.get(cu.getStyleId()).intValue();
+                            }
+                        }
+
+                        cf +=
+                                "<conditionalFormatting sqref=\"" +
+                                        cu.getStart() +
+                                        ":" +
+                                        cu.getEnd() +
+                                        "\"><cfRule type=\"cellIs\" dxfId=\"" +
+                                        (styleIndexOfCondition) +
+                                        "\" priority=\"" +
+                                        (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
+                                        "\" operator=\"" +
+                                        operatorMap.get(operationType) +
+                                        "\">" +
+                                        (cu.getValue() instanceof List<?>
+                                                ? ((List<String>) cu.getValue()).stream().reduce("", (rC, cr) -> rC + "<formula>" + cr + "</formula>")
+                                                : "<formula>" + cu.getValue() + "</formula>") +
+                                        "</cfRule></conditionalFormatting>"
+                        ;
+                        continue;
+                    } else if (cu.getType() == ConditionalFormattingOption.Type.TOP) {
+                        int styleIndexOfCondition = 0;
+                        if (cu.getStyleId() != null) {
+                            if (cFMapIndex.containsKey(cu.getStyleId())) {
+                                styleIndexOfCondition = cFMapIndex.get(cu.getStyleId()).intValue();
+                            }
+                        }
+
+                        cf +=
+                                "<conditionalFormatting sqref=\"" +
+                                        cu.getStart() +
+                                        ":" +
+                                        cu.getEnd() +
+                                        "\"><cfRule type=\"" +
+                                        (cu.getOperator() != null ? "aboveAverage" : "top10") +
+                                        "\" dxfId=\"" +
+                                        (styleIndexOfCondition) +
+                                        "\" priority=\"" +
+                                        (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
+                                        "\" " +
+                                        (Utils.booleanCheck(cu.getBottom()) ? "bottom=\"1\"" : "") +
+                                        " " +
+                                        (cu.getPercent() != null ? "percent=\"1\"" : "") +
+                                        "  rank=\"" +
+                                        cu.getValue() +
+                                        "\" " +
+                                        (cu.getOperator() == ConditionalFormattingOption.ConditionalFormattingTopOperation.BELOW_AVERAGE ? "aboveAverage=\"0\"" : "") +
+                                        "/></conditionalFormatting>";
+                        continue;
+                    } else if (cu.getType() == ConditionalFormattingOption.Type.ICON_SET) {
+                        String percentValue = "";
+                        if (cu.getOperator() == null || !(cu.getOperator() instanceof ConditionalFormattingOption.ConditionalFormattingIconSetOperation)) {
+                            continue;
+                        }
+                        var opIconSet = (ConditionalFormattingOption.ConditionalFormattingIconSetOperation) cu.getOperator();
+                        if (opIconSet.getOperationType().indexOf("5") == 0) {
+                            percentValue =
+                                    "<cfvo type=\"percent\" val=\"0\"/><cfvo type=\"percent\" val=\"20\"/><cfvo type=\"percent\" val=\"40\"/><cfvo type=\"percent\" val=\"60\"/><cfvo type=\"percent\" val=\"80\"/>";
+                        } else if (opIconSet.getOperationType().indexOf("4") == 0) {
+                            percentValue =
+                                    "<cfvo type=\"percent\" val=\"0\"/><cfvo type=\"percent\" val=\"25\"/><cfvo type=\"percent\" val=\"50\"/><cfvo type=\"percent\" val=\"75\"/>";
+                        } else {
+                            percentValue =
+                                    "<cfvo type=\"percent\" val=\"0\"/><cfvo type=\"percent\" val=\"33\"/><cfvo type=\"percent\" val=\"67\"/>";
+                        }
+
+                        cf +=
+                                "<conditionalFormatting sqref=\"" +
+                                        cu.getStart() +
+                                        ":" +
+                                        cu.getEnd() +
+                                        "\"><cfRule type=\"iconSet\" priority=\"" +
+                                        (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
+                                        "\"><iconSet iconSet=\"" +
+                                        opIconSet.getOperationType() +
+                                        "\">" +
+                                        percentValue +
+                                        "</iconSet></cfRule></conditionalFormatting>"
+                        ;
+                        continue;
+                    } else if (cu.getType() == ConditionalFormattingOption.Type.COLOR_SCALE) {
+                        cf +=
+                                "<conditionalFormatting sqref=\"" +
+                                        cu.getStart() +
+                                        ":" +
+                                        cu.getEnd() +
+                                        "\"><cfRule type=\"colorScale\" priority=\"" +
+                                        (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
+                                        "\"><colorScale><cfvo type=\"min\"/>" +
+                                        (cu.getOperator() != null && cu.getOperator().equals("percentile")
+                                                ? "<cfvo type=\"percentile\" val=\"" + cu.getValue() + "\"/>"
+                                                : "") +
+                                        "<cfvo type=\"max\"/>" +
+                                        (cu.getColors() != null
+                                                ? cu.getColors().stream().reduce("", (reColors, colorCu) -> reColors +
+                                                "<color rgb=\"" +
+                                                ColorUtils.convertToHex(colorCu) +
+                                                "\"/>"
+                                        )
+                                                : "<color rgb=\"FFF8696B\"/><color rgb=\"FFFFEB84\"/><color rgb=\"FF63BE7B\"/>") +
+                                        "</colorScale></cfRule></conditionalFormatting>";
+                        continue;
+                    } else if (cu.getType() == ConditionalFormattingOption.Type.DATABAR) {
+                        cf +=
+                                "<conditionalFormatting sqref=\"" +
+                                        cu.getStart() +
+                                        ":" +
+                                        cu.getEnd() +
+                                        "\"><cfRule type=\"dataBar\" priority=\"" +
+                                        (cu.getPriority() != null ? cu.getPriority() : priorityCounter++) +
+                                        "\"><dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/>" +
+                                        (cu.getColors() != null
+                                                ? cu.getColors().stream().reduce("", (reColors, colorCu) -> reColors +
+                                                "<color rgb=\"" +
+                                                ColorUtils.convertToHex(colorCu) +
+                                                "\"/>")
+                                                : "<color rgb=\"FF638EC6\"/>") +
+                                        "</dataBar></cfRule></conditionalFormatting>";
+                    }
+                }
+                cFDataString = cf;
+            }
+            if ((hasCheckbox || hasComment || hasImages) && xl_drawingsFolder == null) {
+                xl_drawingsFolder = xlFolder + "/drawings";
+            }
+            if (hasImages && xl_drawings_relsFolder == null) {
+                xl_drawings_relsFolder = xl_drawingsFolder + "/_rels";
+            }
+            mapData.put("sheet" + (index + 1), SheetProcessResult.builder()
+                    .indexId(indexId + 1)
+                    .key("sheet" + (index + 1))
+                    .sheetName(shName)
+                    .sheetDataTableColumns(sheetDataTableColumns)
+                    .backgroundImageRef(backgroundImageRef)
+                    .sheetDimensions(sheetDimensions)
+                    .asTable(asTable)
+
+                    .sheetDropDown(DropDownUtil.generateDropDown(sheetData.getDropDowns()))
+                    .sheetDataString(sheetDataString)
+                    .sheetBreakLine(sheetBreakLine)
+                    .viewType(viewType)
+                    .hasComment(hasComment)
+                    .drawersContent(drawersContent)
+                    .cFDataString(cFDataString)
+                    .sheetMargin(sheetMargin)
+                    .sheetHeaderFooter(sheetHeaderFooter)
+                    .isPortrait(isPortrait)
+                    .drawersRels(drawersRels)
+                    .hasImages(hasImages)
+                    .hasCheckbox(hasCheckbox)
+                    .formRel(formRel)
+                    .checkboxDrawingContent(checkboxDrawingContent)
+                    .checkboxForm(checkboxForm)
+                    .checkboxSheetContent(checkboxSheetContent)
+                    .checkboxShape(checkboxShape)
+                    .commentString(commentString)
+                    .commentAuthor(commentAuthor)
+                    .shapeCommentRowCol(shapeCommentRowCol)
+                    .splitOption(splitOption)
+                    .sheetViewProperties(sheetViewProperties)
+                    .sheetSizeString(
+                            sheetSizeString.length() > 0
+                                    ? "<cols>" + sheetSizeString + "</cols>"
+                                    : "")
+                    .protectionOption(sheetData.generateProtectedString())
+                    .merges(
+                            mergesCellArray.size() > 0
+                                    ? mergesCellArray.stream().reduce("<mergeCells count=\"" + mergesCellArray.size() + "\">", (mResult, currRef) -> mResult + " <mergeCell ref=\"" + currRef + "\" />") +
+                                    " </mergeCells>"
+                                    : "")
+                    .selectedView(sheetData.getSelected())
+                    .sheetSortFilter(sheetSortFilter)
+                    .tabColor(sheetData.getTabColor() != null ? "<sheetPr codeName=\"" +
+                            ("Sheet" + (index + 1)) +
+                            "\" " +
+                            filterMode +
+                            " >" +
+                            "<tabColor rgb=\"" +
+                            sheetData.getTabColor().replace("#", "") +
+                            "\" />" +
+                            "</sheetPr>"
+                            : "<sheetPr " +
+                            filterMode +
+                            " >" +
+                            "<outlinePr summaryBelow=\"0\" summaryRight=\"0\" />" +
+                            "</sheetPr>")
+
+                    .build());
+            indexId++;
         }
         if (needCalcChain) {
             indexId++;
@@ -2337,7 +2342,7 @@ public class GenerateExcel {
             );
         }
         if (checkboxForm.size() > 0) {
-            String xlCtrlFolder = xlFolder + "ctrlProps";
+            String xlCtrlFolder = xlFolder + "/ctrlProps";
             int cIndex = 0;
             for (var v : checkboxForm) {
                 resultStringMap.put(xlCtrlFolder + "/ctrlProp" + (cIndex + 1) + ".xml", v);
@@ -2360,19 +2365,19 @@ public class GenerateExcel {
         if (Utils.booleanCheck(data.getNotSave())) {
             var gType = data.getGenerateType();
             if (gType == null || gType == GenerateType.BYTE_ARRAY || gType == GenerateType.NODE_BUFFER || gType == GenerateType.ARRAY) {
-                return new Result<>(FileUtils.byteArrayResponse(resultStringMap), null);
+                return new Result<>(FileUtils.byteArrayResponse(resultStringMap, resultAssetsMap), null);
             } else if (gType == GenerateType.INPUT_STREAM) {
-                return new Result<>(FileUtils.inputStreamResponse(resultStringMap), null);
+                return new Result<>(FileUtils.inputStreamResponse(resultStringMap, resultAssetsMap), null);
             } else if (gType == GenerateType.BASE64) {
-                return new Result<>(FileUtils.base64Response(resultStringMap), null);
+                return new Result<>(FileUtils.base64Response(resultStringMap, resultAssetsMap), null);
             } else if (gType == GenerateType.BYTE_BUFFER) {
-                return new Result<>(FileUtils.bufferResponse(resultStringMap), null);
+                return new Result<>(FileUtils.bufferResponse(resultStringMap, resultAssetsMap), null);
             } else if (gType == GenerateType.BINARY_STRING) {
-                return new Result<>(FileUtils.binaryStringResponse(resultStringMap), null);
+                return new Result<>(FileUtils.binaryStringResponse(resultStringMap, resultAssetsMap), null);
             }
             return null;
         } else {
-            var resultFileName = FileUtils.writeFile((data.getFileName() != null) ? data.getFileName() : "tableRecord", resultStringMap);
+            var resultFileName = FileUtils.writeFile((data.getFileName() != null) ? data.getFileName() : "tableRecord", resultStringMap, resultAssetsMap);
             return Result.builder()
                     .fileName(resultFileName)
                     .build();

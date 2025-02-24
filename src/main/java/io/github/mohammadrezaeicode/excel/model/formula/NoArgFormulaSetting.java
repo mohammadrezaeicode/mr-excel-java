@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 public class NoArgFormulaSetting implements FormulaMapBody {
     private NoArgFormulaType noArgType;
     private String styleId;
+
     public enum NoArgFormulaType {
         NOW("NOW"),
         TODAY("TODAY"),

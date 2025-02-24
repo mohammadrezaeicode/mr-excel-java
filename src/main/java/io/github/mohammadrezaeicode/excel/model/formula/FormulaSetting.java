@@ -14,6 +14,7 @@ public class FormulaSetting implements FormulaMapBody {
     private String start;
     private String end;
     private String styleId;
+
     public enum FormulaType {
         AVERAGE("AVERAGE"),
         SUM("SUM"),
